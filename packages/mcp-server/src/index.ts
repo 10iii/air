@@ -1,8 +1,303 @@
-/**
- * @10iii/air-mcp-server
- *
- * MCP Server for AIR - exposes AIR capabilities as MCP tools.
- * Phase 2 implementation.
- */
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
-export {};
+type CoreModule = Record<string, unknown>;
+
+interface CompressorLike {
+  compress(content: string, options?: Record<string, unknown>): { output: string };
+}
+
+type CompressorConstructor = new () => CompressorLike;
+
+const require = createRequire(import.meta.url);
+const core = require("@10iii/air-core") as CoreModule;
+
+function getCompressor(name: string): CompressorLike {
+  const maybeCtor = core[name];
+  if (typeof maybeCtor !== "function") {
+    throw new Error(`Compressor '${name}' is not available in @10iii/air-core`);
+  }
+
+  return new (maybeCtor as CompressorConstructor)();
+}
+
+function compressWith(
+  compressorName: string,
+  content: string,
+  options?: Record<string, unknown>,
+): string {
+  const compressor = getCompressor(compressorName);
+  const result = compressor.compress(content, options);
+  if (!result || typeof result.output !== "string") {
+    throw new Error(`Compressor '${compressorName}' returned an invalid result`);
+  }
+  return result.output;
+}
+
+function formatError(toolName: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `[${toolName}] ${message}`;
+}
+
+function ok(text: string) {
+  return {
+    content: [{ type: "text" as const, text }],
+  };
+}
+
+function fail(toolName: string, error: unknown) {
+  return {
+    content: [{ type: "text" as const, text: formatError(toolName, error) }],
+    isError: true,
+  };
+}
+
+export function createServer(): McpServer {
+  const server = new McpServer({
+    name: "air",
+    version: "0.1.0",
+  });
+
+  server.tool(
+    "air_read",
+    "Read file content with AIR compression.",
+    {
+      content: z.string(),
+      fileName: z.string().optional(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      lineNumbers: z.boolean().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("ReadCompressor", args.content, {
+            fileName: args.fileName,
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+            lineNumbers: args.lineNumbers,
+          }),
+        );
+      } catch (error) {
+        return fail("air_read", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_bash",
+    "Compress terminal/command output.",
+    {
+      content: z.string(),
+      command: z.string().optional(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("BashCompressor", args.content, {
+            command: args.command,
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+          }),
+        );
+      } catch (error) {
+        return fail("air_bash", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_edit",
+    "Apply search/replace edits with AIR edit compression.",
+    {
+      content: z.string(),
+      fileName: z.string().optional(),
+      edits: z.array(
+        z.object({
+          search: z.string(),
+          replace: z.string(),
+          context: z.string().optional(),
+          occurrence: z.number().int().optional(),
+        }),
+      ),
+      dryRun: z.boolean().optional(),
+      fuzzyThreshold: z.number().min(0).max(1).optional(),
+      enableFuzzyMatch: z.boolean().optional(),
+      lineEnding: z.enum(["auto", "preserve", "lf"]).optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("EditCompressor", args.content, {
+            fileName: args.fileName,
+            edits: args.edits,
+            dryRun: args.dryRun,
+            fuzzyThreshold: args.fuzzyThreshold,
+            enableFuzzyMatch: args.enableFuzzyMatch,
+            lineEnding: args.lineEnding,
+          }),
+        );
+      } catch (error) {
+        return fail("air_edit", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_test",
+    "Compress test runner output.",
+    {
+      content: z.string(),
+      runner: z.enum(["pytest", "jest", "vitest", "go", "cargo"]).optional(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("TestCompressor", args.content, {
+            runner: args.runner,
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+          }),
+        );
+      } catch (error) {
+        return fail("air_test", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_grep",
+    "Compress grep output.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      maxFiles: z.number().int().positive().optional(),
+      filesOnly: z.boolean().optional(),
+      mergeDistance: z.number().int().nonnegative().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("GrepCompressor", args.content, {
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+            maxFiles: args.maxFiles,
+            filesOnly: args.filesOnly,
+            mergeDistance: args.mergeDistance,
+          }),
+        );
+      } catch (error) {
+        return fail("air_grep", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_web",
+    "Extract and compress article content from HTML.",
+    {
+      content: z.string(),
+      url: z.string().optional(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      format: z.enum(["markdown", "text"]).optional(),
+      codeOnly: z.boolean().optional(),
+      score: z.boolean().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("WebCompressor", args.content, {
+            url: args.url,
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+            format: args.format,
+            codeOnly: args.codeOnly,
+            score: args.score,
+          }),
+        );
+      } catch (error) {
+        return fail("air_web", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_ls",
+    "Compress directory listing output.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      maxDepth: z.number().int().nonnegative().optional(),
+      groupByType: z.boolean().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("LsCompressor", args.content, {
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+            maxDepth: args.maxDepth,
+            groupByType: args.groupByType,
+          }),
+        );
+      } catch (error) {
+        return fail("air_ls", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_diff",
+    "Compress git diff output.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      level: z.enum(["summary", "compact", "full"]).optional(),
+    },
+    async (args) => {
+      try {
+        return ok(
+          compressWith("DiffCompressor", args.content, {
+            maxLines: args.maxLines,
+            maxTokens: args.maxTokens,
+            level: args.level,
+          }),
+        );
+      } catch (error) {
+        return fail("air_diff", error);
+      }
+    },
+  );
+
+  return server;
+}
+
+export async function startServer(): Promise<void> {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+function isMainModule(): boolean {
+  if (!process.argv[1]) return false;
+  return import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isMainModule()) {
+  void startServer().catch((error) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    process.stderr.write(`Failed to start AIR MCP server: ${message}\n`);
+    process.exitCode = 1;
+  });
+}

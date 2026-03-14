@@ -9,6 +9,12 @@
 import { Command } from "commander";
 import { readCommand } from "./commands/read.js";
 import { bashCommand } from "./commands/bash.js";
+import { grepCommand } from "./commands/grep.js";
+import { webCommand } from "./commands/web.js";
+import { testCommand } from "./commands/test.js";
+import { lsCommand } from "./commands/ls.js";
+import { diffCommand } from "./commands/diff.js";
+import { editCommand } from "./commands/edit.js";
 
 const program = new Command();
 
@@ -19,5 +25,11 @@ program
 
 program.addCommand(readCommand);
 program.addCommand(bashCommand);
+program.addCommand(grepCommand);
+program.addCommand(webCommand);
+program.addCommand(testCommand);
+program.addCommand(lsCommand);
+program.addCommand(diffCommand);
+program.addCommand(editCommand);
 
 program.parse();

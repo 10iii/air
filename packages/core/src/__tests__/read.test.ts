@@ -1010,3 +1010,19 @@ describe("R2-05: import detection for require()", () => {
     expect(isImportLine("export { default } from './module';", lang)).toBe(true);
   });
 });
+
+describe("Finding 8: savedPercent clamp", () => {
+  const compressor = new ReadCompressor();
+
+  it("should never report negative savedPercent when output expands", () => {
+    const result = compressor.compress("x", {
+      collapseComments: false,
+      collapseImports: false,
+      collapseBlanks: false,
+    });
+
+    const meta = result.metadata as Record<string, unknown>;
+    expect(meta.savedPercent).toBeGreaterThanOrEqual(0);
+    expect(result.output).toContain("(0% saved)");
+  });
+});

@@ -335,6 +335,7 @@ describe("air --help", () => {
     expect(stdout).toMatch(/air/i);
     expect(stdout).toMatch(/read/i);
     expect(stdout).toMatch(/bash/i);
+    expect(stdout).toMatch(/web/i);
   });
 
   it("should display read subcommand help", () => {
@@ -351,6 +352,16 @@ describe("air --help", () => {
     expect(stdout).toContain("--no-strip-ansi");
     expect(stdout).toContain("--no-collapse-repeats");
     expect(stdout).toContain("--no-filter-noise");
+  });
+
+  it("should display web subcommand help", () => {
+    const { stdout } = run(["web", "--help"]);
+    expect(stdout).toContain("--url");
+    expect(stdout).toContain("--max-lines");
+    expect(stdout).toContain("--max-tokens");
+    expect(stdout).toContain("--format");
+    expect(stdout).toContain("--code-only");
+    expect(stdout).toContain("--score");
   });
 });
 
@@ -414,5 +425,81 @@ describe("option combinations", () => {
     ].join("\n");
     const { stdout } = run(["bash", "--no-collapse-repeats"], { input });
     expect(stdout).not.toContain("similar lines omitted");
+  });
+});
+
+describe("air web (stdin)", () => {
+  it("should extract article content from piped HTML", () => {
+    const input = `
+      <html><body>
+        <nav>menu links</nav>
+        <article>
+          <h1>CLI Web Title</h1>
+          <p>Main CLI web content paragraph.</p>
+        </article>
+        <footer>footer area</footer>
+      </body></html>`;
+    const { stdout } = run(["web"], { input });
+    expect(stdout).toContain("CLI Web Title");
+    expect(stdout).toContain("Main CLI web content");
+    expect(stdout).not.toContain("menu links");
+    expect(stdout).toMatch(/--- air: \d+ chars → \d+ chars/);
+  });
+
+  it("should support --format text", () => {
+    const input = "<html><body><article><h1>Text Format</h1><p>Paragraph body.</p></article></body></html>";
+    const { stdout } = run(["web", "--format", "text"], { input });
+    expect(stdout).toContain("Text Format");
+    expect(stdout).toContain("Paragraph body.");
+    expect(stdout).not.toContain("# Text Format");
+  });
+
+  it("should support --code-only", () => {
+    const input = "<html><body><article><p>desc</p><pre><code>echo cli</code></pre></article></body></html>";
+    const { stdout } = run(["web", "--code-only"], { input });
+    expect(stdout).toContain("echo cli");
+    expect(stdout).toContain("```");
+    expect(stdout).not.toContain("desc");
+  });
+
+  it("should support --score", () => {
+    const input = "<html><body><article><h2>Score</h2><p>Density line check.</p></article></body></html>";
+    const { stdout } = run(["web", "--score"], { input });
+    expect(stdout).toContain("--- score:");
+  });
+
+  it("should support max-lines truncation", () => {
+    const body = Array.from({ length: 80 }, (_, i) => `<p>line ${i}</p>`).join("");
+    const input = `<html><body><article>${body}</article></body></html>`;
+    const { stdout } = run(["web", "--format", "text", "--max-lines", "8"], { input });
+    expect(stdout.trim().split("\n").length).toBeLessThanOrEqual(8);
+  });
+
+  it("should support max-tokens truncation", () => {
+    const body = Array.from({ length: 120 }, (_, i) => `<p>tokenized content ${i} repeated words repeated words repeated words</p>`).join("");
+    const input = `<html><body><article>${body}</article></body></html>`;
+    const { stdout } = run(["web", "--format", "text", "--max-tokens", "80"], { input });
+    expect(stdout.length).toBeGreaterThan(0);
+  });
+
+  it("should reject invalid format", () => {
+    const input = "<html><body><article><p>x</p></article></body></html>";
+    const { stderr, exitCode } = run(["web", "--format", "xml"], { input, expectFail: true });
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/format must be either/i);
+  });
+
+  it("should reject invalid --max-lines", () => {
+    const input = "<html><body><article><p>x</p></article></body></html>";
+    const { stderr, exitCode } = run(["web", "--max-lines", "bad"], { input, expectFail: true });
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/positive integer/i);
+  });
+
+  it("should reject invalid --max-tokens", () => {
+    const input = "<html><body><article><p>x</p></article></body></html>";
+    const { stderr, exitCode } = run(["web", "--max-tokens", "0"], { input, expectFail: true });
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toMatch(/positive integer/i);
   });
 });

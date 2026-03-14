@@ -1159,7 +1159,9 @@ air grep "useState" src/ --include "*.tsx"
 
 ## 7. Tool 5: air-edit [T1/P1]
 
-### 7.1 核心问题
+### 7.A Problem Statement（核心问题）
+
+#### 编辑工具的两大流派与痛点
 
 调研发现编辑工具存在两大流派，各有痛点：
 
@@ -1171,142 +1173,291 @@ air grep "useState" src/ --include "*.tsx"
 **Search/Replace 派（Cursor, Aider）**：
 - 模糊匹配可能定位错误（代码中存在相似片段时）
 
-### 7.2 设计方案
+#### 三大编辑难题（Three Edit Problems）
 
-air-edit 采用 search/replace 模式，同时解决两派痛点：
+| Problem | Line-tag approach | air-edit solution |
+|---|---|---|
+| 行号偏移失效 | LINE#ID tags invalidated | Content-based matching |
+| Read-Edit loop | Must re-Read after each edit | Accumulative execution |
+| 行移动噪音 | Diff shows unrelated line changes | Only change summary |
+
+#### 设计原则
+
+- **不依赖行号/标签**：使用文本匹配定位，免去 Read 前置步骤
+- **变更摘要优先**：编辑确认只返回变更摘要（哪些行被改了、改成什么），不返回完整 diff 或行移动信息
+- **上下文辅助匹配**：支持提供周围代码上下文来消除歧义（解决模糊匹配问题）
+- **多处编辑合并**：同一文件多处修改在一次调用中完成
+- **预期 token 节省**：间接但显著——消除 Read-Edit-Read 循环，每轮编辑节省一次完整文件读取的上下文
+
+---
+
+### 7.B Algorithm（算法设计）
+
+#### 整体流程
+
+air-edit 采用 **search/replace 模式**（参考 Cursor 和 Aider），核心流程：
+
+1. **接收编辑请求**：一组 `EditOperation[]`，每项包含 `search` + `replace`
+2. **行尾规范化**：将 CRLF 统一为 LF（`auto`/`lf` 模式），便于匹配
+3. **累积执行**：`edit[i]` 在 `edit[i-1]` 的结果上运行（不需每次重新 read）
+4. **匹配搜索**：4 层 fallback 策略（见下文）
+5. **应用替换**：字符串级替换（`before + replace + after`）
+6. **行尾还原**：若原文件使用 CRLF 且 mode=preserve，则还原
+7. **生成摘要**：返回变更摘要而非完整 diff
+
+#### 四层匹配策略（EditMatcher）
+
+当精确匹配失败时，air-edit 提供 4 层 fallback：
 
 ```typescript
+type MatchMethod = 'exact' | 'whitespace-normalized' | 'line-hash' | 'levenshtein';
+
+interface MatchResult {
+  index: number;
+  length: number;
+  confidence: number;   // 0-1
+  method: MatchMethod;
+}
+```
+
+| 层级 | 方法 | 置信度 | 策略描述 |
+|---|---|---|---|
+| 1 | `exact` | 1.0 | 精确字符串匹配（`indexOf`） |
+| 2 | `whitespace-normalized` | 0.95 | 空白字符归一化后匹配（`\s+` → `' '`，trim） |
+| 3 | `line-hash` | 0.85 | 逐行 hash（djb2），滑动窗口比对 |
+| 4 | `levenshtein` | 0.5-0.9 | 编辑距离匹配（需 `context` 门控，±500 字符范围内扫描） |
+
+**匹配规则：**
+- 按层级顺序尝试，首次命中即返回
+- `enableFuzzyMatch=false` 时仅执行第 1 层
+- `content.length > 1MB` 时自动禁用第 4 层（Levenshtein），避免 O(n×m) 退化
+- Levenshtein 层**必须**提供 `context`（无 context 不启用），且 `distance/maxLen > fuzzyThreshold` 时拒绝
+
+#### Occurrence 选择
+
+当匹配到多个位置时，通过 `occurrence` 参数选择：
+
+```typescript
+// occurrence > 0：从头开始，第 1/2/3... 次出现
+// occurrence < 0：从尾开始，-1 = 最后一次，-2 = 倒数第二次
+// occurrence = 0：非法，视为未命中
+```
+
+#### 累积执行与失败隔离
+
+多编辑场景采用**累积执行**：
+
+- `edit[i]` 在 `edit[i-1]` 的新内容上运行，不需要每次重新 read
+- 单个 edit 失败（如 `NO_MATCH`）→ 记录错误并跳过
+- 后续 edit 继续执行
+- 最终返回 `partial`，并给出成功/失败明细
+
+#### 特殊编辑规则
+
+| 场景 | 规则 |
+|---|---|
+| `search === ''` | 视为尾部追加（append） |
+| `search === replace` | No-op，返回 success + `"no change"` |
+| `replace === ''` | 删除匹配的代码段 |
+
+---
+
+### 7.C TypeScript Interfaces（接口定义）
+
+#### 核心数据类型
+
+```typescript
+// ── 匹配方法 ──
+type MatchMethod = 'exact' | 'whitespace-normalized' | 'line-hash' | 'levenshtein';
+
+// ── 编辑操作（单个）──
 interface EditOperation {
   search: string;          // 要查找的代码片段
   replace: string;         // 替换后的内容
   context?: string;        // 周围代码上下文（消除歧义）
-  occurrence?: number;     // 第 N 次出现（默认 1 = 第一次）
+  occurrence?: number;     // 第 N 次出现：>0 从头开始，<0 从尾开始（-1 = 最后一次）
 }
 
-interface AieEditInput {
-  file: string;
-  edits: EditOperation[];  // 支持同文件多处编辑
-}
-
-interface AieEditOutput {
-  tool: 'air-edit';
-  file: string;
-  status: 'success' | 'partial' | 'error';
-  applied: number;         // 成功应用的编辑数
-  total: number;           // 总编辑数
-  changes: Array<{
-    line: number;           // 变更发生的行号
-    summary: string;        // 简短变更描述
-  }>;
-  errors?: Array<{
-    edit: number;           // 第 N 个编辑操作
-    reason: string;         // 失败原因
-  }>;
+// ── 编辑选项（compress() 的 options 参数）──
+interface EditOptions {
+  fileName?: string;
+  edits: EditOperation[];
+  dryRun?: boolean;                   // 仅计算结果，不落盘写文件
+  fuzzyThreshold?: number;            // 默认 0.1（编辑距离 / maxLen 的上限）
+  enableFuzzyMatch?: boolean;         // 默认 true
+  lineEnding?: 'auto' | 'preserve' | 'lf';  // 默认 'auto'
 }
 ```
 
-### 7.3 模糊匹配策略
-
-当精确匹配失败时，air-edit 提供多层 fallback：
+#### 结果数据类型
 
 ```typescript
-class EditMatcher {
-  /**
-   * 匹配策略（按优先级）：
-   * 1. 精确匹配（exact string match）
-   * 2. 空白规范化匹配（normalize whitespace）
-   * 3. 行内容哈希匹配（忽略缩进差异）
-   * 4. Levenshtein 距离匹配（编辑距离 < 阈值）
-   */
-  findMatch(content: string, search: string, context?: string): MatchResult | null {
-    // 第 1 层：精确匹配
-    const exactIndex = content.indexOf(search);
-    if (exactIndex !== -1) {
-      return { index: exactIndex, confidence: 1.0, method: 'exact' };
-    }
-    
-    // 第 2 层：空白规范化
-    const normalizedContent = this.normalizeWhitespace(content);
-    const normalizedSearch = this.normalizeWhitespace(search);
-    const normIndex = normalizedContent.indexOf(normalizedSearch);
-    if (normIndex !== -1) {
-      return { index: this.mapToOriginal(normIndex), confidence: 0.95, method: 'whitespace-normalized' };
-    }
-    
-    // 第 3 层：行内容哈希
-    const hashMatch = this.hashBasedMatch(content, search);
-    if (hashMatch) {
-      return { ...hashMatch, confidence: 0.85, method: 'line-hash' };
-    }
-    
-    // 第 4 层：Levenshtein（仅在有 context 时启用，防误匹配）
-    if (context) {
-      const fuzzyMatch = this.levenshteinMatch(content, search, context);
-      if (fuzzyMatch && fuzzyMatch.distance < search.length * 0.1) {  // < 10% 差异
-        return { ...fuzzyMatch, confidence: 0.7, method: 'levenshtein' };
-      }
-    }
-    
-    return null;  // 匹配失败
-  }
-  
-  private normalizeWhitespace(text: string): string {
-    return text.replace(/\s+/g, ' ').trim();
-  }
-  
-  private hashBasedMatch(content: string, search: string): MatchResult | null {
-    // 按行拆分，计算每行内容哈希（忽略前导空白）
-    // 查找连续行哈希序列匹配
-    const searchLines = search.split('\n').map(l => this.lineHash(l.trim()));
-    const contentLines = content.split('\n');
-    
-    for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
-      const windowHashes = contentLines
-        .slice(i, i + searchLines.length)
-        .map(l => this.lineHash(l.trim()));
-      
-      if (this.arraysEqual(searchLines, windowHashes)) {
-        // 找到匹配：返回原始内容中的位置
-        return { lineStart: i, lineEnd: i + searchLines.length };
-      }
-    }
-    return null;
-  }
+// ── 变更记录 ──
+interface EditChange {
+  edit: number;            // 第 N 个编辑操作（1-indexed）
+  line: number;            // 变更发生的行号
+  summary: string;         // 简短变更描述
+  confidence: number;      // 匹配置信度（0-1）
+  method: MatchMethod;     // 命中策略
+}
+
+// ── 错误记录 ──
+interface EditApplyError {
+  edit: number;            // 第 N 个编辑操作
+  reason: string;          // 失败原因（如 'NO_MATCH'）
+}
+
+// ── 元数据（CompressResult.metadata）──
+interface EditMetadata {
+  applied: number;                    // 成功应用的编辑数
+  total: number;                      // 总编辑数
+  status: 'success' | 'partial' | 'error';
+  changes: EditChange[];
+  errors: EditApplyError[];
+  modifiedContent: string;            // 编辑后的完整文件内容（由调用方负责写回）
+}
+
+// ── 单次编辑内部结果 ──
+interface ApplyEditResult {
+  success: boolean;
+  newContent?: string;
+  lineNumber?: number;
+  confidence?: number;
+  method?: MatchMethod;
+  reason?: string;
 }
 ```
 
-### 7.4 Diff 生成（变更摘要）
+#### CompressResult 兼容
+
+air-edit 在 compressor 体系中与 air-read 保持同构：
+
+```typescript
+// 来自 types.ts 的共享类型
+interface CompressResult {
+  output: string;                     // 面向模型的摘要输出
+  originalSize: number;               // 原始行数
+  compressedSize: number;             // 压缩后行数
+  ratio: number;                      // 压缩比（0-1）
+  format: string;                     // 固定为 'air-edit'
+  metadata?: Record<string, unknown>; // 实际类型为 EditMetadata
+}
+```
+
+- 方法名同为 `compress(content: string, options)`
+- 返回类型同为 `CompressResult`
+- `format` 固定为 `'air-edit'`
+
+#### 错误类型
+
+```typescript
+type EditError =
+  | { code: 'NO_MATCH'; search: string }       // 搜索文本未匹配
+  | { code: 'BINARY_FILE'; file: string }      // 二进制文件
+  | { code: 'FILE_NOT_FOUND'; file: string }   // 文件不存在
+  | { code: 'PERMISSION_DENIED'; file: string } // 权限不足
+  | { code: 'PARSE_ERROR'; detail: string }     // 输入解析失败
+  | { code: 'AMBIGUOUS_MATCH'; count: number }; // 多义匹配
+```
+
+---
+
+### 7.D Output Format（输出格式）
+
+#### 摘要输出示例
 
 编辑完成后，air-edit 只返回变更摘要，**不**返回完整 diff 或行移动信息：
 
-```typescript
-class ChangeSummarizer {
-  /**
-   * 生成简洁的变更摘要，避免行移动噪音
-   */
-  summarize(original: string, modified: string, edits: EditOperation[]): string {
-    const summaryLines: string[] = [];
-    
-    for (const edit of edits) {
-      const lineNum = this.findLineNumber(original, edit.search);
-      const changeType = this.classifyChange(edit.search, edit.replace);
-      
-      summaryLines.push(`  Line ${lineNum}: ${changeType}`);
-    }
-    
-    return `✓ ${edits.length} change(s) applied to ${this.basename(file)}\n` +
-           summaryLines.join('\n');
-  }
-  
-  private classifyChange(search: string, replace: string): string {
-    if (replace === '') return `removed: ${this.truncate(search, 60)}`;
-    if (search === '') return `added: ${this.truncate(replace, 60)}`;
-    return `modified: ${this.truncate(search, 30)} → ${this.truncate(replace, 30)}`;
-  }
-}
+```
+✓ 3/3 changes applied to auth.ts
+  Line 15: modified (+1 lines): async login(cred... → async login(cred..., options?...
+  Line 42: removed (-1 lines): console.log("debug..."
+--- air: 120 lines → 4 lines (97% saved) ---
 ```
 
-### 7.5 CLI 接口
+#### 状态指示符
+
+| 符号 | 含义 | 触发条件 |
+|---|---|---|
+| `✓` | 全部成功 | `applied === total` |
+| `⚠` | 部分成功 | `0 < applied < total` |
+| `✗` | 全部失败 | `applied === 0` |
+
+#### 变更描述格式
+
+每条变更描述由 `ChangeSummarizer.buildSingleSummary()` 生成：
+
+```
+Line {行号}: {type} ({±N lines}): {内容摘要}
+```
+
+- `type`：`modified` / `added` / `removed`
+- `±N lines`：行数变化（`+2 lines`, `-1 lines`, `0 lines`）
+- 内容摘要：search/replace 的截断预览（最长 30/60 字符）
+
+#### 统计页脚
+
+```
+--- air: {原始行数} lines → {输出行数} lines ({节省百分比}% saved) ---
+```
+
+---
+
+### 7.E Edge Cases（边缘情况）
+
+| 场景 | 处理规则 |
+|---|---|
+| Empty file | `search='' + replace` → append；`search≠''` → error |
+| Binary file | 检测 `NUL` 字节，拒绝处理，报错 `"Binary file detected"` |
+| Large file (>1MB) | 正常处理，但自动禁用 Levenshtein |
+| CRLF/LF | `auto` 模式统一规范为 LF 进行匹配；匹配完成后根据 mode 还原 |
+| BOM | 保留 BOM 前缀，匹配时排除 BOM |
+| Unicode | 使用 JS 原生字符串处理（无特殊归一化） |
+| Single line (no newline) | `lineNumber = 1` |
+| search trailing newline diff | 由空白规范化层处理 |
+| Duplicate content | 使用 `occurrence` 或 `context` 消歧 |
+| search === replace | No-op，返回 success，摘要显示 `"no change"` |
+| Overlapping edits | 累积执行天然避免：`edit[i+1]` 在 `edit[i]` 的结果上运行 |
+| dryRun 模式 | 正常执行所有匹配和替换逻辑，返回 would-be 内容供预览，但**不**写回文件（IO 由调用方控制） |
+
+#### 行尾处理详细规则
+
+```typescript
+// 匹配前规范化
+normalizeLineEndingsForMatch(content, mode):
+  mode='preserve' → 不处理
+  mode='lf'|'auto' → content.replace(/\r\n/g, '\n')
+
+// 匹配后还原
+restoreLineEndings(working, original, mode):
+  mode='lf'|'auto' → 不还原（保持 LF）
+  mode='preserve' + 原文件有 CRLF → working.replace(/\n/g, '\r\n')
+```
+
+#### 错误恢复策略
+
+- 单个 edit 失败不影响其他 edit（isolated execution）
+- **文件级错误**（`FILE_NOT_FOUND` / `BINARY_FILE` / `PERMISSION_DENIED`）→ 直接返回整体 `error`
+- **匹配级错误**（`NO_MATCH` / `AMBIGUOUS_MATCH`）→ 仅标记该 edit 失败，继续执行后续 edit
+
+---
+
+### 7.F Integration（集成方案）
+
+#### 与 Compressor 体系的集成
+
+```typescript
+// compressors/index.ts
+export { ReadCompressor } from './air-read';
+export { EditCompressor, type EditOptions } from './air-edit';
+```
+
+**集成约束：**
+- `EditCompressor` 与 `ReadCompressor` 独立实现，仅共享 `CompressResult` 类型定义
+- 禁止 `air-read.ts` 与 `air-edit.ts` 互相 import，避免循环依赖
+- MCP 层在 tool handler 中注入文件 IO，`EditCompressor` 仅负责纯内容变换（详见 §12）
+
+#### CLI 接口
 
 ```bash
 # 单处编辑
@@ -1315,10 +1466,8 @@ air edit src/auth.ts \
   --replace "async login(credentials: Credentials, options?: LoginOptions)"
 
 # 多处编辑（JSON 输入）
-air edit src/auth.ts --edits '[
-  {"search": "old_code_1", "replace": "new_code_1"},
-  {"search": "old_code_2", "replace": "new_code_2"}
-]'
+air edit src/auth.ts \
+  --edits '[{"search":"old_code_1","replace":"new_code_1"},{"search":"old_code_2","replace":"new_code_2"}]'
 
 # 带上下文消除歧义
 air edit src/auth.ts \
@@ -1328,8 +1477,373 @@ air edit src/auth.ts \
 
 # dry-run 模式
 air edit src/auth.ts --search "foo" --replace "bar" --dry-run
+
+# 从 stdin 读取 edits JSON
+air edit src/auth.ts --edits-stdin
 ```
 
+#### OC Plugin / MCP Server 集成
+
+```typescript
+// MCP tool handler 示意（详见 §12）
+async function handleAirEdit(params: {
+  file: string;
+  edits: EditOperation[];
+  dryRun?: boolean;
+}): Promise<AieEditOutput> {
+  const content = await fs.readFile(params.file, 'utf-8');   // IO 在 MCP 层
+  const compressor = new EditCompressor();
+  const result = compressor.compress(content, {
+    fileName: params.file,
+    edits: params.edits,
+    dryRun: params.dryRun,
+  });
+
+  const meta = result.metadata as EditMetadata;
+
+  // 非 dryRun 时写回文件
+  if (!params.dryRun && meta.status !== 'error') {
+    await fs.writeFile(params.file, meta.modifiedContent, 'utf-8');
+  }
+
+  return {
+    tool: 'air-edit',
+    file: params.file,
+    status: meta.status,
+    applied: meta.applied,
+    total: meta.total,
+    changes: meta.changes,
+    errors: meta.errors.length > 0 ? meta.errors : undefined,
+  };
+}
+```
+
+#### 完整类实现参考
+
+以下为 `EditCompressor`、`EditMatcher`、`ChangeSummarizer` 的完整实现设计，可直接用于编码：
+
+<details>
+<summary>EditCompressor 完整实现</summary>
+
+```typescript
+class EditCompressor {
+  private readonly matcher = new EditMatcher();
+  private readonly summarizer = new ChangeSummarizer();
+
+  compress(content: string, options: EditOptions): CompressResult<EditMetadata> {
+    const merged: Required<Pick<EditOptions, 'fuzzyThreshold' | 'enableFuzzyMatch' | 'lineEnding'>> & EditOptions = {
+      fuzzyThreshold: 0.1,
+      enableFuzzyMatch: true,
+      lineEnding: 'auto',
+      ...options,
+    };
+
+    const originalContent = content;
+    let workingContent = this.normalizeLineEndingsForMatch(content, merged.lineEnding);
+    const changes: EditChange[] = [];
+    const errors: EditApplyError[] = [];
+
+    // 累积执行：每个 edit 都基于前一个 edit 的结果继续
+    for (let i = 0; i < merged.edits.length; i++) {
+      const edit = merged.edits[i];
+      const result = this.applyEdit(workingContent, edit, merged);
+
+      if (!result.success || result.newContent === undefined) {
+        errors.push({ edit: i + 1, reason: result.reason ?? 'unknown error' });
+        continue; // 失败隔离：单个 edit 失败不阻塞后续
+      }
+
+      workingContent = result.newContent;
+      changes.push({
+        edit: i + 1,
+        line: result.lineNumber ?? 1,
+        summary: this.summarizer.buildSingleSummary(edit.search, edit.replace),
+        confidence: result.confidence ?? 1,
+        method: result.method ?? 'exact',
+      });
+    }
+
+    const applied = changes.length;
+    const total = merged.edits.length;
+    const status: EditMetadata['status'] =
+      applied === total ? 'success' : applied === 0 ? 'error' : 'partial';
+
+    const modifiedContent = this.restoreLineEndings(workingContent, originalContent, merged.lineEnding);
+
+    const summary = this.summarizer.summarize({
+      fileName: merged.fileName ?? '<memory>',
+      applied,
+      total,
+      changes,
+      errors,
+      originalContent,
+      modifiedContent,
+    });
+
+    return {
+      format: 'air-edit',
+      content: summary,
+      metadata: { applied, total, status, changes, errors, modifiedContent },
+    };
+  }
+
+  private applyEdit(content: string, edit: EditOperation, options: EditOptions): ApplyEditResult {
+    if (edit.search === '') {
+      return {
+        success: true,
+        newContent: `${content}${edit.replace}`,
+        lineNumber: this.indexToLine(content, content.length),
+        confidence: 1,
+        method: 'exact',
+      };
+    }
+
+    if (edit.search === edit.replace) {
+      return {
+        success: true,
+        newContent: content,
+        lineNumber: this.indexToLine(content, content.indexOf(edit.search)),
+        confidence: 1,
+        method: 'exact',
+        reason: 'no change',
+      };
+    }
+
+    const match = this.matcher.findMatch(
+      content, edit.search, edit.context, edit.occurrence,
+      options.fuzzyThreshold, options.enableFuzzyMatch,
+    );
+
+    if (!match) {
+      return { success: false, reason: 'NO_MATCH' };
+    }
+
+    return {
+      success: true,
+      newContent: `${content.slice(0, match.index)}${edit.replace}${content.slice(match.index + match.length)}`,
+      lineNumber: this.indexToLine(content, match.index),
+      confidence: match.confidence,
+      method: match.method,
+    };
+  }
+
+  private normalizeLineEndingsForMatch(content: string, mode: EditOptions['lineEnding']): string {
+    if (mode === 'preserve') return content;
+    if (mode === 'lf' || mode === 'auto') return content.replace(/\r\n/g, '\n');
+    return content;
+  }
+
+  private restoreLineEndings(working: string, original: string, mode: EditOptions['lineEnding']): string {
+    if (mode === 'lf' || mode === 'auto') return working;
+    const originalUsesCrlf = /\r\n/.test(original);
+    return mode === 'preserve' && originalUsesCrlf ? working.replace(/\n/g, '\r\n') : working;
+  }
+
+  private indexToLine(content: string, index: number): number {
+    if (index < 0) return 1;
+    return content.slice(0, index).split('\n').length;
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>EditMatcher 完整实现</summary>
+
+```typescript
+class EditMatcher {
+  findMatch(
+    content: string,
+    search: string,
+    context?: string,
+    occurrence: number = 1,
+    fuzzyThreshold: number = 0.1,
+    enableFuzzy: boolean = true,
+  ): MatchResult | null {
+    const exactMatches = this.collectExactMatches(content, search);
+    const exact = this.findOccurrence(exactMatches, occurrence);
+    if (exact) return exact;
+
+    if (!enableFuzzy) return null;
+
+    const wsMatches = this.whitespaceNormalizedMatch(content, search);
+    const ws = this.findOccurrence(wsMatches, occurrence);
+    if (ws) return ws;
+
+    const hashMatches = this.hashBasedMatch(content, search);
+    const hash = this.findOccurrence(hashMatches, occurrence);
+    if (hash) return hash;
+
+    // 大文件保护：>1MB 时禁用 Levenshtein，避免 O(n*m) 退化
+    if (content.length > 1024 * 1024) return null;
+
+    const levMatches = this.levenshteinMatch(content, search, context, fuzzyThreshold);
+    return this.findOccurrence(levMatches, occurrence);
+  }
+
+  private findOccurrence(matches: MatchResult[], occurrence: number = 1): MatchResult | null {
+    if (matches.length === 0) return null;
+    if (occurrence === 0) return null;
+    if (occurrence > 0) return matches[occurrence - 1] ?? null;
+    const fromEnd = Math.abs(occurrence);
+    return matches[matches.length - fromEnd] ?? null;
+  }
+
+  private collectExactMatches(content: string, search: string): MatchResult[] {
+    if (!search) return [];
+    const out: MatchResult[] = [];
+    let from = 0;
+    while (from <= content.length) {
+      const index = content.indexOf(search, from);
+      if (index === -1) break;
+      out.push({ index, length: search.length, confidence: 1, method: 'exact' });
+      from = index + 1;
+    }
+    return out;
+  }
+
+  private whitespaceNormalizedMatch(content: string, search: string): MatchResult[] {
+    const { normalized, map } = this.normalizeWithMap(content);
+    const normalizedSearch = search.replace(/\s+/g, ' ').trim();
+    if (!normalizedSearch) return [];
+    const out: MatchResult[] = [];
+    let from = 0;
+    while (from <= normalized.length) {
+      const normIndex = normalized.indexOf(normalizedSearch, from);
+      if (normIndex === -1) break;
+      const start = this.mapNormToOrig(map, normIndex);
+      const endNorm = normIndex + normalizedSearch.length - 1;
+      const end = this.mapNormToOrig(map, endNorm) + 1;
+      out.push({ index: start, length: end - start, confidence: 0.95, method: 'whitespace-normalized' });
+      from = normIndex + 1;
+    }
+    return out;
+  }
+
+  private hashBasedMatch(content: string, search: string): MatchResult[] {
+    const searchLines = search.split('\n').map((line) => line.trim());
+    if (searchLines.length === 0) return [];
+    const contentLines = content.split('\n');
+    const lineStarts: number[] = [];
+    let cursor = 0;
+    for (const line of contentLines) {
+      lineStarts.push(cursor);
+      cursor += line.length + 1;
+    }
+    const searchHashes = searchLines.map((line) => this.simpleHash(line));
+    const out: MatchResult[] = [];
+    for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+      const windowHashes = contentLines
+        .slice(i, i + searchLines.length)
+        .map((line) => this.simpleHash(line.trim()));
+      if (!this.arraysEqual(searchHashes, windowHashes)) continue;
+      const startIndex = lineStarts[i];
+      const endLine = i + searchLines.length - 1;
+      const endIndex = lineStarts[endLine] + contentLines[endLine].length;
+      out.push({ index: startIndex, length: endIndex - startIndex, confidence: 0.85, method: 'line-hash' });
+    }
+    return out;
+  }
+
+  private levenshteinMatch(
+    content: string, search: string,
+    context: string | undefined, threshold: number,
+  ): MatchResult[] {
+    if (!context) return [];
+    const contextIndex = content.indexOf(context);
+    if (contextIndex === -1) return [];
+    const rangeStart = Math.max(0, contextIndex - 500);
+    const rangeEnd = Math.min(content.length, contextIndex + context.length + 500);
+    const scoped = content.slice(rangeStart, rangeEnd);
+    const minLen = Math.max(1, Math.floor(search.length * 0.8));
+    const maxLen = Math.max(minLen, Math.ceil(search.length * 1.2));
+    const out: MatchResult[] = [];
+    for (let i = 0; i < scoped.length; i++) {
+      for (let len = minLen; len <= maxLen; len++) {
+        const candidate = scoped.slice(i, i + len);
+        if (!candidate) continue;
+        const distance = this.levenshteinDistance(search, candidate);
+        const ratio = distance / Math.max(search.length, candidate.length);
+        if (ratio > threshold) continue;
+        out.push({
+          index: rangeStart + i, length: candidate.length,
+          confidence: Math.max(0.5, 1 - ratio), method: 'levenshtein',
+        });
+      }
+    }
+    return out.sort((a, b) => a.index - b.index);
+  }
+
+  // ... helper methods: normalizeWithMap, mapNormToOrig, simpleHash, levenshteinDistance, arraysEqual
+}
+```
+
+</details>
+
+<details>
+<summary>ChangeSummarizer 完整实现</summary>
+
+```typescript
+class ChangeSummarizer {
+  summarize(input: {
+    fileName: string;
+    applied: number;
+    total: number;
+    changes: Array<{ line: number; summary: string }>;
+    errors: Array<{ edit: number; reason: string }>;
+    originalContent: string;
+    modifiedContent: string;
+  }): string {
+    const summaryLines: string[] = [];
+    for (const change of input.changes) {
+      summaryLines.push(`  Line ${change.line}: ${change.summary}`);
+    }
+    for (const err of input.errors) {
+      summaryLines.push(`  ✗ Edit ${err.edit}: ${err.reason}`);
+    }
+    const icon = input.applied === input.total ? '✓' : input.applied === 0 ? '✗' : '⚠';
+    const originalLines = this.countLines(input.originalContent);
+    const outputLines = Math.max(1, summaryLines.length + 1);
+    const savings = Math.round((1 - outputLines / Math.max(1, originalLines)) * 100);
+    return [
+      `${icon} ${input.applied}/${input.total} changes applied to ${input.fileName}`,
+      ...summaryLines,
+      `--- air: ${originalLines} lines → ${outputLines} lines (${savings}% saved) ---`,
+    ].join('\n');
+  }
+
+  buildSingleSummary(search: string, replace: string): string {
+    const info = this.classifyChange(search, replace);
+    const deltaLabel = info.lineDelta === 0 ? '0 lines'
+      : info.lineDelta > 0 ? `+${info.lineDelta} lines` : `${info.lineDelta} lines`;
+    if (info.type === 'removed') return `removed (${deltaLabel}): ${this.truncate(search, 60)}`;
+    if (info.type === 'added') return `added (${deltaLabel}): ${this.truncate(replace, 60)}`;
+    return `modified (${deltaLabel}): ${this.truncate(search, 30)} → ${this.truncate(replace, 30)}`;
+  }
+
+  private classifyChange(search: string, replace: string) {
+    const searchLines = this.countLines(search);
+    const replaceLines = this.countLines(replace);
+    const lineDelta = replaceLines - searchLines;
+    if (replace === '') return { type: 'removed' as const, lineDelta };
+    if (search === '') return { type: 'added' as const, lineDelta };
+    return { type: 'modified' as const, lineDelta };
+  }
+
+  private truncate(text: string, maxLength: number): string {
+    const singleLine = text.replace(/\n/g, ' ');
+    return singleLine.length <= maxLength ? singleLine : `${singleLine.slice(0, maxLength)}...`;
+  }
+
+  private countLines(text: string): number {
+    if (!text) return 1;
+    return text.split('\n').length;
+  }
+}
+```
+
+</details>
 ---
 
 ## 8. Tool 6: air-web [T2/P2]

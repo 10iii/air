@@ -671,7 +671,7 @@ describe("Code Review Bug Fixes", () => {
       const result = compressor.compress(input);
       // Hex hashes should be normalized to H, making lines similar
       // and collapsible
-      expect(result.output).toContain("similar lines omitted");
+      expect(result.output).toContain("similar line omitted");
     });
   });
 
@@ -781,5 +781,21 @@ describe("R2 Code Review Bug Fixes", () => {
       const result = compressor.compress(input, { maxTokens: 1 });
       expect((result.metadata as Record<string, unknown>).budgetExceeded).toBe(true);
     });
+  });
+});
+
+describe("Finding 8: savedPercent clamp", () => {
+  const compressor = new BashCompressor();
+
+  it("should never report negative savedPercent when output expands", () => {
+    const result = compressor.compress("x", {
+      collapseRepeats: false,
+      filterNoise: false,
+      collapseBlanks: false,
+    });
+
+    const meta = result.metadata as Record<string, unknown>;
+    expect(meta.savedPercent).toBeGreaterThanOrEqual(0);
+    expect(result.output).toContain("(0% saved)");
   });
 });

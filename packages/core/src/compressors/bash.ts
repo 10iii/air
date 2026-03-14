@@ -86,7 +86,7 @@ function collapseRepeatedLines(lines: string[]): string[] {
       // Collapse: keep first + last + count hint
       result.push(current);
       if (runLen > 2) {
-        result.push(`  ... (${runLen - 2} similar lines omitted)`);
+        result.push(`  ... (${runLen - 2} similar line${runLen - 2 === 1 ? "" : "s"} omitted)`);
       }
       result.push(lines[j - 1]);
     } else {
@@ -510,10 +510,11 @@ export class BashCompressor {
     const warningCount = lines.filter((l) => isWarningLine(l)).length;
 
     // Build stats footer
-    const savedPercent =
+    const rawSavedPercent =
       originalCharCount > 0
         ? Math.round((1 - compressedCharCount / originalCharCount) * 100)
         : 0;
+    const savedPercent = Math.max(0, rawSavedPercent);
     const statsLine = `--- air: ${originalLineCount} lines \u2192 ${compressedLineCount} lines (${savedPercent}% saved) ---`;
 
     const output = includeStats ? compressedContent + "\n" + statsLine : compressedContent;

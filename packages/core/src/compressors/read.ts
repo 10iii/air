@@ -544,10 +544,11 @@ export class ReadCompressor {
     const compressedCharCount = compressedContent.length;
 
     // Build stats footer
-    const savedPercent =
+    const rawSavedPercent =
       originalCharCount > 0
         ? Math.round((1 - compressedCharCount / originalCharCount) * 100)
         : 0;
+    const savedPercent = Math.max(0, rawSavedPercent);
     const statsLine = `--- air: ${originalLineCount} lines \u2192 ${compressedLineCount} lines (${savedPercent}% saved) ---`;
 
     const output = includeStats ? compressedContent + "\n" + statsLine : compressedContent;
