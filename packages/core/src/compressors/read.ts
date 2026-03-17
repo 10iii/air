@@ -33,6 +33,8 @@ export interface ReadOptions {
   collapseBlanks?: boolean;
   /** File name (for language detection) */
   fileName?: string;
+  /** Output mode: "full" (default, current behavior) or "skeleton" (collapse function bodies) */
+  mode?: "full" | "skeleton";
 }
 
 // estimateTokens moved to utils/index.ts
@@ -445,6 +447,330 @@ function smartTruncateByTokens(
   return { lines: smartTruncate(lines, Math.max(1, bestMaxLines)), budgetExceeded: false };
 }
 
+// --- Skeleton mode: language-specific signature patterns ---
+
+interface SignaturePatterns {
+  functionSignature: RegExp;
+  braceStyle: "brace" | "indent" | "end-keyword";
+}
+
+const SKELETON_PATTERNS: Record<string, SignaturePatterns> = {
+  typescript: {
+    functionSignature:
+      /^(\s*)(export\s+)?(export\s+default\s+)?(declare\s+)?(abstract\s+)?(async\s+)?(function\s*\*?\s+\w+|class\s+\w+|interface\s+\w+|enum\s+\w+|type\s+\w+\s*=\s*\{|(const|let|var)\s+\w+\s*=\s*(\(|async\s*\()|(?!if|else|for|while|do|switch|try|catch|finally|return|throw|with)\w+\s*\([^)]*\)\s*(:\s*\S+)?\s*\{)/,
+    braceStyle: "brace",
+  },
+  javascript: {
+    functionSignature:
+      /^(\s*)(export\s+)?(export\s+default\s+)?(async\s+)?(function\s*\*?\s+\w+|class\s+\w+|(const|let|var)\s+\w+\s*=\s*(\(|async\s*\(|function)|(?!if|else|for|while|do|switch|try|catch|finally|return|throw|with)\w+\s*\([^)]*\)\s*\{)/,
+    braceStyle: "brace",
+  },
+  python: {
+    functionSignature: /^(\s*)(async\s+)?(def\s+\w+|class\s+\w+)/,
+    braceStyle: "indent",
+  },
+  go: {
+    functionSignature: /^(\s*)(func\s+|type\s+\w+\s+(struct|interface)\s*\{)/,
+    braceStyle: "brace",
+  },
+  rust: {
+    functionSignature:
+      /^(\s*)(pub(\s*\(crate\))?\s+)?(unsafe\s+)?(async\s+)?(fn\s+\w+|impl\s+|struct\s+\w+|enum\s+\w+|trait\s+\w+|mod\s+\w+)/,
+    braceStyle: "brace",
+  },
+  java: {
+    functionSignature:
+      /^(\s*)(public|private|protected|static|final|abstract|synchronized|native|strictfp|\s)*\s*(class\s+\w+|interface\s+\w+|enum\s+\w+|(\w+(<[^>]*>)?)\s+\w+\s*\()/,
+    braceStyle: "brace",
+  },
+  csharp: {
+    functionSignature:
+      /^(\s*)(public|private|protected|internal|static|virtual|override|abstract|sealed|async|partial|\s)*\s*(class\s+\w+|interface\s+\w+|enum\s+\w+|struct\s+\w+|(\w+(<[^>]*>)?)\s+\w+\s*\()/,
+    braceStyle: "brace",
+  },
+  cpp: {
+    functionSignature:
+      /^(\s*)(virtual\s+|static\s+|inline\s+|explicit\s+|extern\s+|const\s+|template\s*<[^>]*>\s*)*(class\s+\w+|struct\s+\w+|enum\s+|namespace\s+\w+|(\w+(::\w+)?(<[^>]*>)?\s*\*?\s*&?\s*)\s+\w+\s*\()/,
+    braceStyle: "brace",
+  },
+  c: {
+    functionSignature:
+      /^(\s*)(static\s+|inline\s+|extern\s+|const\s+)*(struct\s+\w+|enum\s+|(\w+\s*\*?\s*)\s+\w+\s*\()/,
+    braceStyle: "brace",
+  },
+  ruby: {
+    functionSignature: /^(\s*)(def\s+\w+|class\s+\w+|module\s+\w+)/,
+    braceStyle: "end-keyword",
+  },
+  shell: {
+    functionSignature: /^(\s*)(function\s+\w+|\w+\s*\(\s*\)\s*\{?)/,
+    braceStyle: "brace",
+  },
+  php: {
+    functionSignature:
+      /^(\s*)(public|private|protected|static|final|abstract|\s)*\s*(function\s+\w+|class\s+\w+|interface\s+\w+|trait\s+\w+|enum\s+\w+)/,
+    braceStyle: "brace",
+  },
+  kotlin: {
+    functionSignature:
+      /^(\s*)(public|private|protected|internal|open|override|abstract|final|suspend|inline|\s)*\s*(fun\s+|class\s+\w+|interface\s+\w+|enum\s+class\s+\w+|object\s+\w+)/,
+    braceStyle: "brace",
+  },
+  swift: {
+    functionSignature:
+      /^(\s*)(public|private|fileprivate|internal|open|override|static|class|final|mutating|\s)*\s*(func\s+\w+|class\s+\w+|struct\s+\w+|enum\s+\w+|protocol\s+\w+)/,
+    braceStyle: "brace",
+  },
+};
+
+function getSkeletonPatterns(lang: string): SignaturePatterns | undefined {
+  return SKELETON_PATTERNS[lang];
+}
+
+function isSingleLineBraceFunction(line: string): boolean {
+  const bc = countBraces(line);
+  return bc.open > 0 && bc.close >= bc.open;
+}
+
+function countBraces(line: string): { open: number; close: number } {
+  let open = 0;
+  let close = 0;
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  for (let idx = 0; idx < line.length; idx++) {
+    const ch = line[idx];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inString) {
+      if (ch === stringChar) inString = false;
+      continue;
+    }
+    // Detect // line comment (outside strings)
+    if (ch === "/" && idx + 1 < line.length && line[idx + 1] === "/") {
+      break; // Stop counting — rest is comment
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === "{") open++;
+    else if (ch === "}") close++;
+  }
+  return { open, close };
+}
+
+function collapseFunctionBodies(
+  lines: string[],
+  lang: LanguageInfo
+): string[] {
+  const patterns = getSkeletonPatterns(lang.language);
+  if (!patterns) return lines;
+
+  if (patterns.braceStyle === "indent") {
+    return collapseByIndent(lines, patterns);
+  }
+  if (patterns.braceStyle === "end-keyword") {
+    return collapseByEndKeyword(lines, patterns);
+  }
+  return collapseByBraces(lines, patterns);
+}
+
+function collapseByBraces(
+  lines: string[],
+  patterns: SignaturePatterns
+): string[] {
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!patterns.functionSignature.test(line)) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    if (isSingleLineBraceFunction(line)) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    const sigIndent = getIndent(line);
+    const bc = countBraces(line);
+    let braceDepth = bc.open - bc.close;
+
+    if (braceDepth > 0) {
+      // Brace on signature line: `function foo() {`
+      result.push(line);
+      i++;
+      const bodyStart = i;
+
+      while (i < lines.length && braceDepth > 0) {
+        const ibc = countBraces(lines[i]);
+        braceDepth += ibc.open - ibc.close;
+        i++;
+      }
+
+      const closingIdx = i - 1;
+      const bodyLines = closingIdx - bodyStart;
+
+      if (bodyLines < 3) {
+        for (let k = bodyStart; k <= closingIdx; k++) result.push(lines[k]);
+      } else {
+        result.push(`${" ".repeat(sigIndent + 2)}... (${bodyLines} lines collapsed)`);
+        result.push(lines[closingIdx]);
+      }
+    } else {
+      // No brace on signature line — check next line
+      result.push(line);
+      i++;
+
+      if (i >= lines.length) continue;
+
+      const nextBc = countBraces(lines[i]);
+      if (nextBc.open <= 0) continue;
+
+      braceDepth = nextBc.open - nextBc.close;
+      if (braceDepth <= 0) {
+        result.push(lines[i]);
+        i++;
+        continue;
+      }
+
+      const braceLineIdx = i;
+      i++;
+
+      while (i < lines.length && braceDepth > 0) {
+        const ibc = countBraces(lines[i]);
+        braceDepth += ibc.open - ibc.close;
+        i++;
+      }
+
+      const closingIdx = i - 1;
+      const totalBodyLines = closingIdx - braceLineIdx;
+
+      if (totalBodyLines < 3) {
+        for (let k = braceLineIdx; k <= closingIdx; k++) result.push(lines[k]);
+      } else {
+        result.push(lines[braceLineIdx]);
+        result.push(`${" ".repeat(sigIndent + 2)}... (${totalBodyLines - 1} lines collapsed)`);
+        result.push(lines[closingIdx]);
+      }
+    }
+  }
+
+  return result;
+}
+
+function collapseByIndent(
+  lines: string[],
+  patterns: SignaturePatterns
+): string[] {
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!patterns.functionSignature.test(line)) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    // Preserve decorator lines above (already pushed)
+    result.push(line);
+    const sigIndent = getIndent(line);
+    i++;
+
+    // Body = consecutive lines with indent > sigIndent (or blank lines within)
+    const bodyStart = i;
+    while (i < lines.length) {
+      const currentLine = lines[i];
+      if (currentLine.trim() === "") {
+        // Blank line — check if next non-blank is still indented
+        let peek = i + 1;
+        while (peek < lines.length && lines[peek].trim() === "") peek++;
+        if (peek < lines.length && getIndent(lines[peek]) > sigIndent) {
+          i++;
+          continue;
+        }
+        break;
+      }
+      if (getIndent(currentLine) > sigIndent) {
+        i++;
+      } else {
+        break;
+      }
+    }
+
+    const bodyLen = i - bodyStart;
+    if (bodyLen < 3) {
+      for (let k = bodyStart; k < i; k++) {
+        result.push(lines[k]);
+      }
+    } else {
+      result.push(`${" ".repeat(sigIndent + 4)}... (${bodyLen} lines collapsed)`);
+    }
+  }
+
+  return result;
+}
+
+function collapseByEndKeyword(
+  lines: string[],
+  patterns: SignaturePatterns
+): string[] {
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!patterns.functionSignature.test(line)) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    result.push(line);
+    const sigIndent = getIndent(line);
+    i++;
+
+    const bodyStart = i;
+    // Find matching `end` at same indent level
+    while (i < lines.length) {
+      if (/^end(\s|$|;)/.test(lines[i].trimStart()) && getIndent(lines[i]) <= sigIndent) {
+        break;
+      }
+      i++;
+    }
+
+    const bodyLen = i - bodyStart;
+    if (bodyLen < 3) {
+      for (let k = bodyStart; k < i; k++) {
+        result.push(lines[k]);
+      }
+    } else {
+      result.push(`${" ".repeat(sigIndent + 2)}... (${bodyLen} lines collapsed)`);
+    }
+    // Push the `end` line
+    if (i < lines.length) {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+
+  return result;
+}
+
 export class ReadCompressor {
   /**
    * Compress file content for AI consumption.
@@ -457,6 +783,7 @@ export class ReadCompressor {
         | "collapseComments"
         | "collapseImports"
         | "collapseBlanks"
+        | "mode"
       >
     > &
       ReadOptions = {
@@ -464,6 +791,7 @@ export class ReadCompressor {
       collapseComments: true,
       collapseImports: true,
       collapseBlanks: true,
+      mode: "full",
       ...options,
     };
 
@@ -500,6 +828,11 @@ export class ReadCompressor {
     // 4. Collapse import blocks
     if (opts.collapseImports) {
       lines = collapseImports(lines, lang);
+    }
+
+    // 4.5. Skeleton mode: collapse function bodies
+    if (opts.mode === "skeleton") {
+      lines = collapseFunctionBodies(lines, lang);
     }
 
     // 5. Smart truncation
@@ -565,6 +898,7 @@ export class ReadCompressor {
         language: lang.language,
         budgetExceeded,
         statsIncluded: includeStats,
+        mode: opts.mode,
       },
     };
   }

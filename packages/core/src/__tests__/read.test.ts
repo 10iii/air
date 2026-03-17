@@ -1026,3 +1026,751 @@ describe("Finding 8: savedPercent clamp", () => {
     expect(result.output).toContain("(0% saved)");
   });
 });
+
+describe("skeleton mode", () => {
+  const compressor = new ReadCompressor();
+  const skeletonOpts = (fileName: string) => ({
+    fileName,
+    mode: "skeleton" as const,
+    collapseComments: false,
+    collapseImports: false,
+    collapseBlanks: false,
+  });
+
+  describe("TypeScript/JavaScript", () => {
+    it("should collapse function body", () => {
+      const input = [
+        "function hello(name: string) {",
+        "  const greeting = `Hello, ${name}`;",
+        "  console.log(greeting);",
+        "  return greeting;",
+        "  // extra line",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("function hello(name: string) {");
+      expect(result.output).toMatch(/\.\.\. \(\d+ lines collapsed\)/);
+      expect(result.output).toContain("}");
+      expect(result.output).not.toContain("console.log");
+    });
+
+    it("should collapse arrow function assigned to const", () => {
+      const input = [
+        "const greet = (name: string) => {",
+        "  const msg = `Hi ${name}`;",
+        "  console.log(msg);",
+        "  return msg;",
+        "};",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("const greet = (name: string) => {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse async function", () => {
+      const input = [
+        "async function fetchData(url: string) {",
+        "  const response = await fetch(url);",
+        "  const data = await response.json();",
+        "  return data;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("async function fetchData(url: string) {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse class body", () => {
+      const input = [
+        "class UserService {",
+        "  private db: Database;",
+        "  constructor(db: Database) {",
+        "    this.db = db;",
+        "  }",
+        "  async getUser(id: string) {",
+        "    return this.db.find(id);",
+        "  }",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("class UserService {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse interface", () => {
+      const input = [
+        "interface Config {",
+        "  host: string;",
+        "  port: number;",
+        "  debug: boolean;",
+        "  timeout: number;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("interface Config {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse enum", () => {
+      const input = [
+        "enum Status {",
+        "  Active = 'active',",
+        "  Inactive = 'inactive',",
+        "  Pending = 'pending',",
+        "  Deleted = 'deleted',",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("enum Status {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse export function", () => {
+      const input = [
+        "export function processData(data: string[]) {",
+        "  const filtered = data.filter(Boolean);",
+        "  const mapped = filtered.map(x => x.trim());",
+        "  return mapped;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("export function processData(data: string[]) {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse export default function", () => {
+      const input = [
+        "export default function main() {",
+        "  init();",
+        "  run();",
+        "  cleanup();",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("export default function main() {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse generator function", () => {
+      const input = [
+        "function* generateIds() {",
+        "  let id = 0;",
+        "  while (true) {",
+        "    yield id++;",
+        "  }",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("function* generateIds() {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse JavaScript function", () => {
+      const input = [
+        "function validate(input) {",
+        "  if (!input) return false;",
+        "  const rules = getRules();",
+        "  return rules.every(r => r(input));",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.js"));
+      expect(result.output).toContain("function validate(input) {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("Python", () => {
+    it("should collapse def function", () => {
+      const input = [
+        "def process(data):",
+        "    result = []",
+        "    for item in data:",
+        "        result.append(transform(item))",
+        "    return result",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.py"));
+      expect(result.output).toContain("def process(data):");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse class", () => {
+      const input = [
+        "class DataProcessor:",
+        "    def __init__(self, config):",
+        "        self.config = config",
+        "        self.cache = {}",
+        "",
+        "    def process(self, data):",
+        "        return self._transform(data)",
+        "",
+        "    def _transform(self, data):",
+        "        return [x * 2 for x in data]",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.py"));
+      expect(result.output).toContain("class DataProcessor:");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse async def", () => {
+      const input = [
+        "async def fetch_data(url):",
+        "    async with aiohttp.ClientSession() as session:",
+        "        response = await session.get(url)",
+        "        return await response.json()",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.py"));
+      expect(result.output).toContain("async def fetch_data(url):");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should preserve top-level code between functions", () => {
+      const input = [
+        "import os",
+        "",
+        "CONFIG = 'prod'",
+        "",
+        "def main():",
+        "    data = load()",
+        "    result = process(data)",
+        "    save(result)",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.py"));
+      expect(result.output).toContain("import os");
+      expect(result.output).toContain("CONFIG = 'prod'");
+      expect(result.output).toContain("def main():");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("Go", () => {
+    it("should collapse func", () => {
+      const input = [
+        "func processItems(items []string) error {",
+        "\tfor _, item := range items {",
+        "\t\tif err := validate(item); err != nil {",
+        "\t\t\treturn err",
+        "\t\t}",
+        "\t}",
+        "\treturn nil",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.go"));
+      expect(result.output).toContain("func processItems(items []string) error {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse type struct", () => {
+      const input = [
+        "type Config struct {",
+        "\tHost     string",
+        "\tPort     int",
+        "\tDebug    bool",
+        "\tTimeout  time.Duration",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.go"));
+      expect(result.output).toContain("type Config struct {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse method with receiver", () => {
+      const input = [
+        "func (s *Server) Start() error {",
+        "\tlistener, err := net.Listen(\"tcp\", s.addr)",
+        "\tif err != nil {",
+        "\t\treturn err",
+        "\t}",
+        "\treturn s.serve(listener)",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.go"));
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("Rust", () => {
+    it("should collapse fn", () => {
+      const input = [
+        "fn process(data: &[u8]) -> Result<Vec<u8>> {",
+        "    let mut result = Vec::new();",
+        "    for byte in data {",
+        "        result.push(transform(*byte));",
+        "    }",
+        "    Ok(result)",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("lib.rs"));
+      expect(result.output).toContain("fn process");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse impl block", () => {
+      const input = [
+        "impl Parser {",
+        "    pub fn new() -> Self {",
+        "        Parser { pos: 0 }",
+        "    }",
+        "",
+        "    pub fn parse(&mut self, input: &str) -> Result<AST> {",
+        "        let tokens = self.tokenize(input)?;",
+        "        self.build_ast(tokens)",
+        "    }",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("lib.rs"));
+      expect(result.output).toContain("impl Parser {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("Java", () => {
+    it("should collapse class with methods", () => {
+      const input = [
+        "public class UserService {",
+        "    private final UserRepo repo;",
+        "",
+        "    public UserService(UserRepo repo) {",
+        "        this.repo = repo;",
+        "    }",
+        "",
+        "    public User findById(String id) {",
+        "        return repo.findById(id)",
+        "            .orElseThrow(() -> new NotFoundException(id));",
+        "    }",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("App.java"));
+      expect(result.output).toContain("public class UserService {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("C#", () => {
+    it("should collapse class with methods", () => {
+      const input = [
+        "public class OrderService {",
+        "    private readonly ILogger _logger;",
+        "",
+        "    public OrderService(ILogger logger) {",
+        "        _logger = logger;",
+        "    }",
+        "",
+        "    public async Task<Order> ProcessAsync(OrderRequest req) {",
+        "        _logger.LogInformation(\"Processing order\");",
+        "        var order = MapToOrder(req);",
+        "        await _db.SaveAsync(order);",
+        "        return order;",
+        "    }",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("Service.cs"));
+      expect(result.output).toContain("public class OrderService {");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+
+  describe("Ruby", () => {
+    it("should collapse class with methods", () => {
+      const input = [
+        "class Calculator",
+        "  def add(a, b)",
+        "    validate(a)",
+        "    validate(b)",
+        "    result = a + b",
+        "    log(result)",
+        "    result",
+        "  end",
+        "",
+        "  def subtract(a, b)",
+        "    a - b",
+        "  end",
+        "end",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("calc.rb"));
+      expect(result.output).toContain("class Calculator");
+      expect(result.output).toMatch(/lines collapsed/);
+      expect(result.output).toContain("end");
+    });
+
+    it("should collapse standalone def", () => {
+      const input = [
+        "def greet(name)",
+        "  msg = \"Hello #{name}\"",
+        "  puts msg",
+        "  log(msg)",
+        "  msg",
+        "end",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("app.rb"));
+      expect(result.output).toContain("def greet(name)");
+      expect(result.output).toMatch(/lines collapsed/);
+      expect(result.output).toContain("end");
+    });
+  });
+
+  describe("general behavior", () => {
+    it("mode: full (default) should NOT collapse function bodies", () => {
+      const input = [
+        "function hello() {",
+        "  console.log('hello');",
+        "  console.log('world');",
+        "  return true;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, {
+        fileName: "file.ts",
+        collapseComments: false,
+        collapseImports: false,
+        collapseBlanks: false,
+      });
+      expect(result.output).toContain("console.log('hello')");
+      expect(result.output).toContain("console.log('world')");
+      expect(result.output).not.toContain("collapsed");
+    });
+
+    it("mode: skeleton with empty file should work", () => {
+      const result = compressor.compress("", skeletonOpts("file.ts"));
+      expect(result.output).toContain("--- air:");
+    });
+
+    it("mode: skeleton combined with collapseComments + collapseImports", () => {
+      const input = [
+        "import { a } from 'a';",
+        "import { b } from 'b';",
+        "import { c } from 'c';",
+        "import { d } from 'd';",
+        "import { e } from 'e';",
+        "",
+        "// comment 1",
+        "// comment 2",
+        "// comment 3",
+        "// comment 4",
+        "",
+        "function process() {",
+        "  const x = 1;",
+        "  const y = 2;",
+        "  return x + y;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, {
+        fileName: "file.ts",
+        mode: "skeleton",
+        collapseComments: true,
+        collapseImports: true,
+      });
+      expect(result.output).toContain("// ... (3 more imports)");
+      expect(result.output).toMatch(/more comment lines/);
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("mode: skeleton with maxLines should truncate after skeleton", () => {
+      const funcs: string[] = [];
+      for (let i = 0; i < 20; i++) {
+        funcs.push(
+          `function func${i}() {`,
+          `  line1_${i};`,
+          `  line2_${i};`,
+          `  line3_${i};`,
+          `  line4_${i};`,
+          `}`,
+          "",
+        );
+      }
+      const input = funcs.join("\n");
+
+      const result = compressor.compress(input, {
+        fileName: "file.ts",
+        mode: "skeleton",
+        maxLines: 10,
+        collapseComments: false,
+        collapseImports: false,
+      });
+
+      const totalLines = result.output.split("\n").length;
+      expect(totalLines).toBeLessThanOrEqual(10);
+    });
+
+    it("mode: skeleton with lineNumbers should add numbers after skeleton", () => {
+      const input = [
+        "function hello() {",
+        "  console.log('a');",
+        "  console.log('b');",
+        "  console.log('c');",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, {
+        fileName: "file.ts",
+        mode: "skeleton",
+        lineNumbers: true,
+        collapseComments: false,
+        collapseImports: false,
+        collapseBlanks: false,
+      });
+      expect(result.output).toMatch(/^\d+: function hello/m);
+      expect(result.output).toMatch(/collapsed/);
+    });
+
+    it("metadata should include mode info", () => {
+      const input = "function foo() { return 1; }";
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      const meta = result.metadata as Record<string, unknown>;
+      expect(meta.mode).toBe("skeleton");
+    });
+
+    it("metadata should include full mode by default", () => {
+      const input = "const x = 1;";
+      const result = compressor.compress(input, { fileName: "file.ts" });
+      const meta = result.metadata as Record<string, unknown>;
+      expect(meta.mode).toBe("full");
+    });
+
+    it("unknown language should pass through unchanged", () => {
+      const input = [
+        "BLOCK START",
+        "  line 1",
+        "  line 2",
+        "  line 3",
+        "  line 4",
+        "BLOCK END",
+      ].join("\n");
+
+      const result = compressor.compress(input, {
+        ...skeletonOpts("file.xyz"),
+      });
+      expect(result.output).toContain("line 1");
+      expect(result.output).toContain("line 4");
+      expect(result.output).not.toContain("collapsed");
+    });
+
+    it("should preserve top-level variable declarations", () => {
+      const input = [
+        "const CONFIG = 'production';",
+        "let counter = 0;",
+        "",
+        "function increment() {",
+        "  counter++;",
+        "  console.log(counter);",
+        "  return counter;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("const CONFIG = 'production';");
+      expect(result.output).toContain("let counter = 0;");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should keep small function bodies (< 3 lines) as-is", () => {
+      const input = [
+        "function add(a: number, b: number) {",
+        "  return a + b;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("return a + b;");
+      expect(result.output).not.toContain("collapsed");
+    });
+  });
+
+  describe("control flow keywords should NOT be treated as functions", () => {
+    it("should not collapse if/for/while/switch as separate functions in TypeScript", () => {
+      const input = [
+        "function realFunction() {",
+        "  if (condition) {",
+        "    doA();",
+        "    doB();",
+        "    doC();",
+        "  }",
+        "  for (let i = 0; i < 10; i++) {",
+        "    step1();",
+        "    step2();",
+        "    step3();",
+        "  }",
+        "  while (running) {",
+        "    tick();",
+        "    tock();",
+        "    check();",
+        "  }",
+        "  switch (value) {",
+        "    case 1:",
+        "      handleOne();",
+        "      break;",
+        "    case 2:",
+        "      handleTwo();",
+        "      break;",
+        "  }",
+        "  return result;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.ts"));
+      expect(result.output).toContain("function realFunction()");
+      expect(result.output).toMatch(/lines collapsed/);
+      const collapseCount = (result.output.match(/lines collapsed/g) || []).length;
+      expect(collapseCount).toBe(1);
+    });
+
+    it("should not collapse if/for/while/switch as separate functions in JavaScript", () => {
+      const input = [
+        "function realFunction() {",
+        "  if (condition) {",
+        "    doA();",
+        "    doB();",
+        "    doC();",
+        "  }",
+        "  for (let i = 0; i < 10; i++) {",
+        "    step1();",
+        "    step2();",
+        "    step3();",
+        "  }",
+        "  while (running) {",
+        "    tick();",
+        "    tock();",
+        "    check();",
+        "  }",
+        "  switch (value) {",
+        "    case 1:",
+        "      handleOne();",
+        "      break;",
+        "    case 2:",
+        "      handleTwo();",
+        "      break;",
+        "  }",
+        "  return result;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("file.js"));
+      expect(result.output).toContain("function realFunction()");
+      expect(result.output).toMatch(/lines collapsed/);
+      const collapseCount = (result.output.match(/lines collapsed/g) || []).length;
+      expect(collapseCount).toBe(1);
+    });
+  });
+
+  describe("additional language coverage", () => {
+    it("should collapse PHP function body", () => {
+      const input = [
+        "<?php",
+        "function processOrder($order) {",
+        "    $total = 0;",
+        '    foreach ($order->items as $item) {',
+        "        $total += $item->price;",
+        "    }",
+        "    return $total;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("app.php"));
+      expect(result.output).toContain("function processOrder");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse Kotlin function body", () => {
+      const input = [
+        "fun processItems(items: List<String>) {",
+        '    val filtered = items.filter { it.isNotEmpty() }',
+        "    val mapped = filtered.map { it.uppercase() }",
+        '    val result = mapped.joinToString(", ")',
+        "    println(result)",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.kt"));
+      expect(result.output).toContain("fun processItems");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse Swift function body", () => {
+      const input = [
+        "func processData(input: [Int]) -> Int {",
+        "    var sum = 0",
+        "    for value in input {",
+        "        sum += value",
+        "    }",
+        "    return sum",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.swift"));
+      expect(result.output).toContain("func processData");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse C function body", () => {
+      const input = [
+        "int calculate_sum(int* arr, int len) {",
+        "    int sum = 0;",
+        "    for (int i = 0; i < len; i++) {",
+        "        sum += arr[i];",
+        "    }",
+        "    return sum;",
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("main.c"));
+      expect(result.output).toContain("int calculate_sum");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse C++ method body", () => {
+      const input = [
+        "class Calculator {",
+        "public:",
+        "    int add(int a, int b) {",
+        "        int result = a + b;",
+        "        log(result);",
+        "        validate(result);",
+        "        return result;",
+        "    }",
+        "};",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("calc.cpp"));
+      expect(result.output).toContain("class Calculator");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+
+    it("should collapse Shell function body", () => {
+      const input = [
+        "process_data() {",
+        '    echo "step 1"',
+        '    echo "step 2"',
+        '    echo "step 3"',
+        '    echo "step 4"',
+        "}",
+      ].join("\n");
+
+      const result = compressor.compress(input, skeletonOpts("script.sh"));
+      expect(result.output).toContain("process_data()");
+      expect(result.output).toMatch(/lines collapsed/);
+    });
+  });
+});

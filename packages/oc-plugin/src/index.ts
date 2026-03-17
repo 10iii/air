@@ -50,6 +50,7 @@ const AirPlugin: Plugin = async () => {
           maxLines: tool.schema.number().int().positive().optional(),
           maxTokens: tool.schema.number().int().positive().optional(),
           lineNumbers: tool.schema.boolean().optional(),
+          mode: tool.schema.enum(["full", "skeleton"]).optional(),
         },
         async execute(args) {
           try {
@@ -58,6 +59,7 @@ const AirPlugin: Plugin = async () => {
               maxLines: args.maxLines,
               maxTokens: args.maxTokens,
               lineNumbers: args.lineNumbers,
+              mode: args.mode,
             });
           } catch (error) {
             return formatError("air_read", error);

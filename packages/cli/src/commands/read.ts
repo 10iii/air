@@ -32,6 +32,7 @@ export const readCommand = new Command("read")
   .option("--no-collapse-comments", "Don't collapse comment blocks")
   .option("--no-collapse-imports", "Don't collapse import blocks")
   .option("--no-collapse-blanks", "Don't collapse blank lines")
+  .option("--mode <mode>", "Output mode: full or skeleton", "full")
   .action(
     (
       file: string,
@@ -42,11 +43,18 @@ export const readCommand = new Command("read")
         collapseComments?: boolean;
         collapseImports?: boolean;
         collapseBlanks?: boolean;
+        mode?: string;
       }
     ) => {
       let content: string;
       const maxLines = requirePositiveInteger("max-lines", options.maxLines);
       const maxTokens = requirePositiveInteger("max-tokens", options.maxTokens);
+
+      const mode = options.mode ?? "full";
+      if (mode !== "full" && mode !== "skeleton") {
+        process.stderr.write(`Error: --mode must be "full" or "skeleton"\n`);
+        process.exit(1);
+      }
 
       if (file === "-") {
         content = readFileSync(0, "utf-8");
@@ -80,6 +88,7 @@ export const readCommand = new Command("read")
         collapseImports: options.collapseImports ?? true,
         collapseBlanks: options.collapseBlanks ?? true,
         fileName: file,
+        mode: mode as "full" | "skeleton",
       });
 
       process.stdout.write(result.output + "\n");

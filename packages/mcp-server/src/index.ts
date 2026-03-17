@@ -70,6 +70,7 @@ export function createServer(): McpServer {
       maxLines: z.number().int().positive().optional(),
       maxTokens: z.number().int().positive().optional(),
       lineNumbers: z.boolean().optional(),
+      mode: z.enum(["full", "skeleton"]).optional(),
     },
     async (args) => {
       try {
@@ -79,6 +80,7 @@ export function createServer(): McpServer {
             maxLines: args.maxLines,
             maxTokens: args.maxTokens,
             lineNumbers: args.lineNumbers,
+            mode: args.mode,
           }),
         );
       } catch (error) {
