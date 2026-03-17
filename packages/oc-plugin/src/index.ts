@@ -236,6 +236,112 @@ const AirPlugin: Plugin = async () => {
           }
         },
       }),
+
+      air_session: tool({
+        description: "Compress AI chat session/conversation data.",
+        args: {
+          content: tool.schema.string(),
+          maxLines: tool.schema.number().int().positive().optional(),
+          maxTokens: tool.schema.number().int().positive().optional(),
+          maxMessages: tool.schema.number().int().positive().optional(),
+          strategy: tool.schema.enum(["time-decay", "tool-focused", "balanced"]).optional(),
+        },
+        async execute(args) {
+          try {
+            return compressWith("SessionCompressor", args.content, {
+              maxLines: args.maxLines,
+              maxTokens: args.maxTokens,
+              maxMessages: args.maxMessages,
+              strategy: args.strategy,
+            });
+          } catch (error) {
+            return formatError("air_session", error);
+          }
+        },
+      }),
+
+      air_api: tool({
+        description: "Compress API/JSON response data.",
+        args: {
+          content: tool.schema.string(),
+          maxLines: tool.schema.number().int().positive().optional(),
+          maxTokens: tool.schema.number().int().positive().optional(),
+          maxDepth: tool.schema.number().int().positive().optional(),
+          maxArrayLength: tool.schema.number().int().positive().optional(),
+          removeNulls: tool.schema.boolean().optional(),
+          removeDefaults: tool.schema.boolean().optional(),
+          schemaFields: tool.schema.array(tool.schema.string()).optional(),
+        },
+        async execute(args) {
+          try {
+            return compressWith("ApiCompressor", args.content, {
+              maxLines: args.maxLines,
+              maxTokens: args.maxTokens,
+              maxDepth: args.maxDepth,
+              maxArrayLength: args.maxArrayLength,
+              removeNulls: args.removeNulls,
+              removeDefaults: args.removeDefaults,
+              schemaFields: args.schemaFields,
+            });
+          } catch (error) {
+            return formatError("air_api", error);
+          }
+        },
+      }),
+
+      air_search: tool({
+        description: "Compress search engine results.",
+        args: {
+          content: tool.schema.string(),
+          maxLines: tool.schema.number().int().positive().optional(),
+          maxTokens: tool.schema.number().int().positive().optional(),
+          maxResults: tool.schema.number().int().positive().optional(),
+          query: tool.schema.string().optional(),
+        },
+        async execute(args) {
+          try {
+            return compressWith("SearchCompressor", args.content, {
+              maxLines: args.maxLines,
+              maxTokens: args.maxTokens,
+              maxResults: args.maxResults,
+              query: args.query,
+            });
+          } catch (error) {
+            return formatError("air_search", error);
+          }
+        },
+      }),
+
+      air_media: tool({
+        description: "Compress media transcripts (SRT/VTT/text subtitles).",
+        args: {
+          content: tool.schema.string(),
+          maxLines: tool.schema.number().int().positive().optional(),
+          maxTokens: tool.schema.number().int().positive().optional(),
+          format: tool.schema.enum(["srt", "vtt", "text", "auto"]).optional(),
+          removeTimestamps: tool.schema.boolean().optional(),
+          removeSpeakerLabels: tool.schema.boolean().optional(),
+          mergeSpeakers: tool.schema.boolean().optional(),
+          removeFillerWords: tool.schema.boolean().optional(),
+          language: tool.schema.enum(["en", "zh", "auto"]).optional(),
+        },
+        async execute(args) {
+          try {
+            return compressWith("MediaCompressor", args.content, {
+              maxLines: args.maxLines,
+              maxTokens: args.maxTokens,
+              format: args.format,
+              removeTimestamps: args.removeTimestamps,
+              removeSpeakerLabels: args.removeSpeakerLabels,
+              mergeSpeakers: args.mergeSpeakers,
+              removeFillerWords: args.removeFillerWords,
+              language: args.language,
+            });
+          } catch (error) {
+            return formatError("air_media", error);
+          }
+        },
+      }),
     },
   };
 };

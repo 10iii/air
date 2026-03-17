@@ -280,6 +280,116 @@ export function createServer(): McpServer {
     },
   );
 
+  server.tool(
+    "air_session",
+    "Compress AI chat session/conversation data.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      maxMessages: z.number().int().positive().optional(),
+      strategy: z.enum(["time-decay", "tool-focused", "balanced"]).optional(),
+    },
+    async (args) => {
+      try {
+        return ok(compressWith("SessionCompressor", args.content, {
+          maxLines: args.maxLines,
+          maxTokens: args.maxTokens,
+          maxMessages: args.maxMessages,
+          strategy: args.strategy,
+        }));
+      } catch (error) {
+        return fail("air_session", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_api",
+    "Compress API/JSON response data.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      maxDepth: z.number().int().positive().optional(),
+      maxArrayLength: z.number().int().positive().optional(),
+      removeNulls: z.boolean().optional(),
+      removeDefaults: z.boolean().optional(),
+      schemaFields: z.array(z.string()).optional(),
+    },
+    async (args) => {
+      try {
+        return ok(compressWith("ApiCompressor", args.content, {
+          maxLines: args.maxLines,
+          maxTokens: args.maxTokens,
+          maxDepth: args.maxDepth,
+          maxArrayLength: args.maxArrayLength,
+          removeNulls: args.removeNulls,
+          removeDefaults: args.removeDefaults,
+          schemaFields: args.schemaFields,
+        }));
+      } catch (error) {
+        return fail("air_api", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_search",
+    "Compress search engine results.",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      maxResults: z.number().int().positive().optional(),
+      query: z.string().optional(),
+    },
+    async (args) => {
+      try {
+        return ok(compressWith("SearchCompressor", args.content, {
+          maxLines: args.maxLines,
+          maxTokens: args.maxTokens,
+          maxResults: args.maxResults,
+          query: args.query,
+        }));
+      } catch (error) {
+        return fail("air_search", error);
+      }
+    },
+  );
+
+  server.tool(
+    "air_media",
+    "Compress media transcripts (SRT/VTT/text subtitles).",
+    {
+      content: z.string(),
+      maxLines: z.number().int().positive().optional(),
+      maxTokens: z.number().int().positive().optional(),
+      format: z.enum(["srt", "vtt", "text", "auto"]).optional(),
+      removeTimestamps: z.boolean().optional(),
+      removeSpeakerLabels: z.boolean().optional(),
+      mergeSpeakers: z.boolean().optional(),
+      removeFillerWords: z.boolean().optional(),
+      language: z.enum(["en", "zh", "auto"]).optional(),
+    },
+    async (args) => {
+      try {
+        return ok(compressWith("MediaCompressor", args.content, {
+          maxLines: args.maxLines,
+          maxTokens: args.maxTokens,
+          format: args.format,
+          removeTimestamps: args.removeTimestamps,
+          removeSpeakerLabels: args.removeSpeakerLabels,
+          mergeSpeakers: args.mergeSpeakers,
+          removeFillerWords: args.removeFillerWords,
+          language: args.language,
+        }));
+      } catch (error) {
+        return fail("air_media", error);
+      }
+    },
+  );
+
   return server;
 }
 

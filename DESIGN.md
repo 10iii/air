@@ -3,6 +3,7 @@
 > **设计理念**：Prevention over Cleanup。在工具输出进入 AI 上下文前完成优化，而非事后压缩。
 
 > **变更日志**
+> - v0.3 (2026-03-17): 对齐 PRD v0.4+，新增 4 工具设计（air-session/air-api/air-search/air-media），工具总数 9→13，air-context 限定为 OC-Only，Phase 2B/2C/2D 状态更新为已完成
 > - v0.2 (2026-03-09): 对齐 PRD v0.3，工具从 3 扩展至 9 个（air-run 更名 air-bash；新增 air-grep/air-edit/air-web/air-ls/air-context/air-diff），包结构更新为 4 包（core/cli/mcp-server/oc-plugin），开发计划对齐 5 阶段路线图，删除 air-repomap（ai-see scout 已覆盖）
 > - v0.1 (2026-03-09): 初版（air-test/air-read/air-run 三工具设计）
 
@@ -28,7 +29,7 @@ AIR 的核心设计原则源自 RESEARCH.md 中的调研发现：
 │                           Integration Layer                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
 │  │   OC Plugin  │  │  MCP Server  │  │     CLI      │  │ Future Hook  │ │
-│  │ 9 air_* tools│  │ stdio / SSE  │  │ npx air ...  │  │ PostToolUse  │ │
+│  │12 air_* tools│  │ stdio / SSE  │  │ npx air ...  │  │ PostToolUse  │ │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
 └─────────┼─────────────────┼─────────────────┼─────────────────┼─────────┘
           │                 │                 │                 │
@@ -56,17 +57,22 @@ AIR 的核心设计原则源自 RESEARCH.md 中的调研发现：
           │                 │                 │
           ▼                 ▼                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Tool Wrappers (9 tools)                       │
+│                          Tool Wrappers (13 tools)                       │
 │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
 │ │ air-read │ │ air-bash │ │ air-test │ │ air-grep │ │ air-edit │      │
 │ │          │ │          │ │          │ │          │ │          │      │
 │ │ T1 (P0)  │ │ T1 (P0)  │ │ T1 (P1)  │ │ T1 (P1)  │ │ T1 (P1)  │      │
 │ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                   │
-│ │ air-web  │ │ air-ls   │ │air-contxt│ │ air-diff │                   │
-│ │          │ │          │ │          │ │          │                   │
-│ │ T2 (P2)  │ │ T2 (P2)  │ │ T2 (P2)  │ │ T3 (P3)  │                   │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘                   │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
+│ │ air-web  │ │ air-ls   │ │air-contxt│ │ air-diff │ │air-sessn │      │
+│ │          │ │          │ │ OC-Only  │ │          │ │          │      │
+│ │ T2 (P1)  │ │ T2 (P2)  │ │ T2 (P1)  │ │ T3 (P3)  │ │ T2 (P0)  │      │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐                                │
+│ │ air-api  │ │air-search│ │air-media │                                │
+│ │          │ │          │ │          │                                │
+│ │ T2 (P1)  │ │ T2 (P2)  │ │ T2 (P2)  │                                │
+│ └──────────┘ └──────────┘ └──────────┘                                │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -637,14 +643,82 @@ air test "python custom_runner.py" --parser pytest
 
 | 模式 | 用途 | 实现方式 | Token 节省 |
 |---|---|---|---|
-| `skeleton` | 了解文件结构 | tree-sitter AST 提取 | 80-95% |
+| `skeleton` | 了解文件结构 | Step 1: 正则启发式 / Step 2: tree-sitter AST | 30-50% / 80-95% |
 | `focused` | 查看特定代码段 | 目标 + padding 行 | 50-80% |
 | `full` | 完整内容（fallback） | 紧凑行号格式 | 10-20% |
 | `auto` | 自动选择 | 根据请求分析 | 变化 |
 
-### 4.2 Skeleton 模式
+### 4.2 Skeleton 模式（两步走架构）
 
-#### 4.2.1 AST 提取策略
+#### 4.2.0 设计决策
+
+**问题**：tree-sitter 的 WASM 语法包 52MB（全量）/15MB（精选），对一个轻量化工具来说过重。且 WASM 首次加载 ~200ms，超出 100ms 延迟目标。
+
+**方案**：两步走，Step 1 零依赖正则启发式先上线，Step 2 tree-sitter 作为可选增强。
+
+| 层级 | 方式 | 依赖 | 精度 | 延迟 | 体积增量 |
+|---|---|---|---|---|---|
+| Step 1（默认） | 正则 + 缩进启发式 | 零 | ~80% | <10ms | 0 |
+| Step 2（可选） | web-tree-sitter WASM | optional peer | ~99% | ~200ms 首次 | 4.5MB + 15MB |
+
+#### 4.2.1 Step 1: 正则启发式提取
+
+使用语言特定的正则模式 + 缩进层级分析提取代码骨架：
+
+```typescript
+interface RegexSkeletonExtractor {
+  language: string;
+  /** 匹配函数/类/接口定义行的正则 */
+  definitionPatterns: RegExp[];
+  /** 缩进字符（tab or spaces） */
+  indentUnit: string;
+}
+
+// 语言模式配置
+const SKELETON_PATTERNS: Record<string, RegExp[]> = {
+  typescript: [
+    /^\s*(export\s+)?(async\s+)?function\s+\w+/,
+    /^\s*(export\s+)?(abstract\s+)?class\s+\w+/,
+    /^\s*(export\s+)?interface\s+\w+/,
+    /^\s*(export\s+)?type\s+\w+\s*=/,
+    /^\s*(export\s+)?enum\s+\w+/,
+    /^\s*(public|private|protected)\s+(async\s+)?[\w]+\s*\(/,
+  ],
+  python: [
+    /^(\s*)(def|async\s+def)\s+\w+/,
+    /^(\s*)class\s+\w+/,
+  ],
+  go: [
+    /^func\s+(\(\w+\s+\*?\w+\)\s+)?\w+/,
+    /^type\s+\w+\s+(struct|interface)/,
+  ],
+};
+```
+
+**提取策略**：
+1. 识别定义行（正则匹配）
+2. 记录缩进层级，推断嵌套关系
+3. 折叠函数体：定义行 → `  // ... N lines`
+4. 保留 import 块（已有折叠逻辑复用）
+
+**限制**：
+- 无法处理多行函数签名（如参数跨行）
+- 装饰器/注解可能被误判
+- 嵌套函数依赖缩进而非 AST，偶有误差
+
+#### 4.2.2 Step 2: tree-sitter WASM 精准模式（可选依赖）
+
+作为 optional peer dependency 集成，未安装时静默降级：
+
+```typescript
+// 运行时检测 tree-sitter 可用性
+let treeSitterAvailable = false;
+try {
+  require.resolve('web-tree-sitter');
+  require.resolve('tree-sitter-wasms');
+  treeSitterAvailable = true;
+} catch { /* 降级到 Step 1 */ }
+```
 
 使用 tree-sitter 解析代码，提取结构化骨架：
 
@@ -731,21 +805,30 @@ export function createAuthMiddleware(service: AuthService): Middleware
 
 #### 4.2.2 语言支持
 
-| 语言 | tree-sitter grammar | 提取支持度 |
-|---|---|---|
-| TypeScript | tree-sitter-typescript | 完整 |
-| JavaScript | tree-sitter-javascript | 完整 |
-| Python | tree-sitter-python | 完整 |
-| Go | tree-sitter-go | 完整 |
-| Rust | tree-sitter-rust | 完整 |
-| Java | tree-sitter-java | 部分（Phase 2） |
-| C# | tree-sitter-c-sharp | 部分（Phase 2） |
+| 语言 | Step 1 正则支持 | Step 2 tree-sitter grammar | 优先级 |
+|---|---|---|---|
+| TypeScript/TSX | ✅ | tree-sitter-typescript | P0 |
+| JavaScript/JSX | ✅ | tree-sitter-javascript | P0 |
+| Python | ✅ | tree-sitter-python | P0 |
+| Go | ✅ | tree-sitter-go | P1 |
+| Rust | ✅ | tree-sitter-rust | P1 |
+| Java | ✅ | tree-sitter-java | P2 |
+| C/C++ | ✅ | tree-sitter-c / tree-sitter-cpp | P2 |
+| C# | 部分 | tree-sitter-c-sharp | P2 |
 
-未支持语言的 fallback：正则表达式匹配函数/类定义行。
+Step 1 不支持的语言：使用通用缩进启发式 fallback。
 
 ### 4.3 Focused 模式
 
-#### 4.3.1 目标定位
+#### 4.3.1 目标定位（两步走）
+
+**Step 1（默认）**：基于正则 + 行范围定位
+- `line-range`：直接解析 "100-150"
+- `pattern`：grep 匹配 + 上下文展开
+- `function`/`class`：正则搜索定义行 + 缩进推断范围
+
+**Step 2（tree-sitter 可选）**：AST 精准定位
+- 精确定位函数/类的起止行（包含装饰器、多行签名）
 
 ```typescript
 interface FocusTarget {
@@ -757,18 +840,19 @@ function resolveFocus(
   file: string,
   target: FocusTarget
 ): { start: number; end: number } {
+  if (treeSitterAvailable && (target.type === 'function' || target.type === 'class')) {
+    // Step 2: 精准 AST 定位
+    return findByAST(file, target);
+  }
+  // Step 1: 正则 + 行范围
   switch (target.type) {
     case 'function':
-      // 用 AST 找函数定义范围
-      return findFunctionRange(file, target.value);
+      return findFunctionByRegex(file, target.value);
     case 'class':
-      // 用 AST 找类定义范围
-      return findClassRange(file, target.value);
+      return findClassByRegex(file, target.value);
     case 'line-range':
-      // 直接解析 "100-150"
       return parseLineRange(target.value);
     case 'pattern':
-      // grep 找第一个匹配行，展开上下文
       return findPatternContext(file, target.value);
   }
 }
@@ -2868,22 +2952,22 @@ air/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   ├── cli/                  # @air/cli - 命令行工具（9 个子命令）
+│   ├── cli/                  # @air/cli - 命令行工具（12 个子命令）
 │   │   ├── src/
-│   │   │   ├── commands/     # read, bash, test, grep, edit, web, ls, context, diff, stats, retrieve
+│   │   │   ├── commands/     # read, bash, test, grep, edit, web, ls, diff, session, api, search, media
 │   │   │   └── index.ts      # CLI 入口
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
 │   ├── mcp-server/           # @air/mcp-server - MCP 协议适配器
 │   │   ├── src/
-│   │   │   └── index.ts      # MCP 服务器（暴露 8 个工具，不含 air-context）
+│   │   │   └── index.ts      # MCP 服务器（暴露 12 个工具）
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
 │   └── oc-plugin/            # @air/oc-plugin - OpenCode 插件适配器
 │       ├── src/
-│       │   └── index.ts      # OC 插件（暴露全部 9 个工具）
+│       │   └── index.ts      # OC 插件（暴露 12 个工具 + air-context）
 │       ├── package.json
 │       └── tsconfig.json
 │
@@ -2900,16 +2984,22 @@ air/
 {
   "name": "@air/core",
   "dependencies": {
-    "web-tree-sitter": "^0.22.0",
     "cheerio": "^1.0.0",
     "@mozilla/readability": "^0.5.0",
     "turndown": "^7.0.0",
     "ignore": "^5.3.0"
   },
+  "peerDependencies": {
+    "web-tree-sitter": "^0.22.0",
+    "tree-sitter-wasms": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "web-tree-sitter": { "optional": true },
+    "tree-sitter-wasms": { "optional": true }
+  },
   "devDependencies": {
-    "tree-sitter-typescript": "^0.22.0",
-    "tree-sitter-python": "^0.22.0",
-    "tree-sitter-go": "^0.22.0",
+    "web-tree-sitter": "^0.22.0",
+    "tree-sitter-wasms": "^0.1.0",
     "typescript": "^5.4.0",
     "tsup": "^8.0.0",
     "vitest": "^2.0.0"
@@ -2950,85 +3040,58 @@ air/
 
 ## 15. 开发计划
 
-### Phase 1: MVP — air-read + air-bash (Week 1-2)
+### Phase 1: 核心 8 工具 ✅ 已完成
+
+air-read + air-bash + air-test + air-grep + air-edit + air-web + air-ls + air-diff
+- 490 测试通过，3 轮 code review（最终 9/10）
+- CLI + MCP + OC Plugin 全部集成
+
+### Phase 2: 新增 4 工具 ✅ 已完成
+
+air-session + air-api + air-search + air-media
+- 307 新测试（总计 797），2 轮 code review（最终 8.5/10）
+- air-search 引擎为 stub，聚合逻辑完成
+
+### Phase 2A: air-read skeleton/focused 增强 📋 规划中
 
 | 任务 | 预估 | 交付物 |
 |---|---|---|
-| Monorepo 搭建 | 0.5 天 | pnpm workspace, tsconfig, vitest |
-| Storage 层实现 | 1 天 | 存储、检索、清理 API |
-| air-read skeleton 模式 | 1.5 天 | tree-sitter 集成 + AST 骨架提取 |
-| air-read focused/full 模式 | 1 天 | 目标定位 + padding + 行号优化 |
-| air-bash 命令检测 + 摘要 | 1.5 天 | 命令类型检测 + 输出策略 |
-| CLI 框架 | 0.5 天 | commander 骨架 + read/bash 子命令 |
-| 基准测试 | 1 天 | 真实项目测试，TSR 测量 |
+| Step 1: 正则启发式 skeleton 提取 | 2 天 | 语言模式配置 + 缩进分析 + 函数体折叠 |
+| Step 1: focused 模式正则定位 | 1 天 | 函数/类名搜索 + 行范围 + pattern |
+| air-bash profile 系统扩展 | 1 天 | systemctl/journalctl/top patterns |
+| Step 2: tree-sitter 可选集成 | 2 天 | optional peer dep + WASM 加载 + 降级 |
 
-**Phase 1 成功标准**：
-- `air read` 和 `air bash` 可用
-- TSR > 70%（综合）
-- 处理延迟 < 100ms
-
-### Phase 1.5: air-test + air-grep (Week 2-3)
+### Phase 2B: Search Engine HTML 解析 📋 规划中
 
 | 任务 | 预估 | 交付物 |
 |---|---|---|
-| pytest parser | 1 天 | 解析 pytest 输出 |
-| jest/vitest parser | 1 天 | 解析 jest/vitest 输出 |
-| Test summarizer | 1 天 | 测试结果摘要逻辑 |
-| air-grep 聚合引擎 | 1 天 | 路径去重 + 分组 + 结果压缩 |
-| CLI 子命令扩展 | 0.5 天 | test/grep 子命令 |
-| OC plugin 初版 | 0.5 天 | 4 个工具的 OC 包装 |
+| Baidu JSON API 实现 | 1 天 | `tn=json` 解析 + 结果映射 |
+| Bing HTML 解析 | 1.5 天 | cheerio + base64 URL 解码 |
+| Sogou HTML 解析 | 1 天 | xpath 选择器实现 |
+| DuckDuckGo npm 集成 | 0.5 天 | duck-duck-scrape 包装 |
+| 区域检测增强 | 0.5 天 | 多条件判定（Google ping + 语言 + 时区 + DNS） |
 
-**Phase 1.5 成功标准**：
-- 4 个 T1 工具可用（read/bash/test/grep）
-- OC plugin 集成验证
-- TSR: air-test > 90%, air-grep > 40%
-
-### Phase 2: air-edit + PostToolUse Hook (Week 3-4)
+### Phase 2C: air-web 增强 📋 规划中
 
 | 任务 | 预估 | 交付物 |
 |---|---|---|
-| air-edit search/replace 引擎 | 1.5 天 | 精确匹配 + 空白规范化 |
-| air-edit 模糊匹配 | 1 天 | 行哈希 + Levenshtein fallback |
-| air-edit 变更摘要 | 0.5 天 | 简洁 diff 输出 |
-| MCP server | 1 天 | stdio transport + 5 个工具 |
-| OC plugin 更新 | 0.5 天 | 加入 air-edit |
-| 基准测试报告 | 1 天 | 多项目测试数据 |
-| 向框架提 PR | 0.5 天 | 至少一个 PR |
+| DOM snapshot 压缩模式 | 2 天 | 浏览器自动化 DOM 快照压缩 |
+| 大页面智能过滤 | 1 天 | UI标签/广告/导航过滤（>5MB） |
 
-**Phase 2 成功标准**：
-- 5 个 T1 工具完整可用
-- MCP server 可与 Claude Desktop 配合使用
-- 博客发布，引起社区讨论
-
-### Phase 2.5: air-web + air-ls (Week 5-6)
+### Phase 2D: air-context OC-Only 📋 规划中
 
 | 任务 | 预估 | 交付物 |
 |---|---|---|
-| air-web Readability 集成 | 1.5 天 | cheerio + readability + turndown |
-| air-web 密度评分 | 0.5 天 | 内容密度计算 |
-| air-ls tree 输出 | 1 天 | .gitignore 遵从 + tree 格式 |
-| air-ls 文件类型分组 | 0.5 天 | 按扩展名聚合统计 |
-| MCP/OC 更新 | 0.5 天 | 加入 web/ls 工具 |
+| air-context OC 适配器 | 1 天 | ContextProvider 接口 + OC 实现 |
+| 仅限 OC，不做跨框架 | — | — |
 
-**Phase 2.5 成功标准**：
-- air-web 正文提取可用，TSR > 50%
-- air-ls 紧凑目录输出可用
-
-### Phase 3: air-context + air-diff + AEO Spec (Week 7+)
+### Phase 3: PostToolUse Hook + AEO 规范 📋 远期
 
 | 任务 | 预估 | 交付物 |
 |---|---|---|
-| air-context 适配器接口 | 1 天 | HostContextAdapter 规范 |
-| air-context OC 适配 | 1 天 | 基于自写 OC 插件原型 |
-| air-diff git 解析 | 1.5 天 | diff 解析 + 移动检测 |
-| air-diff 语义摘要 | 1 天 | 启发式规则引擎 |
 | AEO spec 文档 | 3 天 | 规范初稿 |
+| 框架集成 PR | 2 天 | 至少一个 PR |
 | 社区反馈集成 | ongoing | 根据使用反馈迭代 |
-
-**Phase 3 成功标准**：
-- 全部 9 个工具可用
-- AEO 规范发布
-- 上下文管理原型在 OC 中验证
 
 ---
 

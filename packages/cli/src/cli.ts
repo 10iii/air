@@ -15,6 +15,10 @@ import { testCommand } from "./commands/test.js";
 import { lsCommand } from "./commands/ls.js";
 import { diffCommand } from "./commands/diff.js";
 import { editCommand } from "./commands/edit.js";
+import { sessionCommand } from "./commands/session.js";
+import { apiCommand } from "./commands/api.js";
+import { searchCommand } from "./commands/search.js";
+import { mediaCommand } from "./commands/media.js";
 
 const program = new Command();
 
@@ -31,5 +35,9 @@ program.addCommand(testCommand);
 program.addCommand(lsCommand);
 program.addCommand(diffCommand);
 program.addCommand(editCommand);
+program.addCommand(sessionCommand);
+program.addCommand(apiCommand);
+program.addCommand(searchCommand);
+program.addCommand(mediaCommand);
 
 program.parse();
