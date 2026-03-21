@@ -799,3 +799,106 @@ describe("Finding 8: savedPercent clamp", () => {
     expect(result.output).toContain("(0% saved)");
   });
 });
+
+describe("systemctl/journalctl/top profiles", () => {
+  const compressor = new BashCompressor();
+
+  describe("systemctl output", () => {
+    it("should filter Memory/Tasks/CGroup lines as noise", () => {
+      const input = `● nginx.service - A high performance web server
+   Loaded: loaded (/lib/systemd/system/nginx.service; enabled)
+   Active: active (running) since Mon 2026-03-21 10:00:00 UTC
+   Memory: 12.0M
+   Tasks: 2
+   CGroup: /system.slice/nginx.service
+           └─1234 nginx: master process`;
+      const result = compressor.compress(input, { command: "systemctl status" });
+      expect(result.output).toContain("nginx.service");
+      expect(result.output).toContain("active (running)");
+      expect(result.output).not.toContain("Memory: 12.0M");
+      expect(result.output).not.toContain("Tasks: 2");
+    });
+
+    it("should detect systemctl error states", () => {
+      expect(isErrorLine("   Active: failed since Mon 2026-03-21")).toBe(true);
+      expect(isErrorLine("   Active: inactive (dead)")).toBe(true);
+      expect(isErrorLine("activating (auto-restart)")).toBe(true);
+      expect(isErrorLine("Unit foo.service could not be found")).toBe(true);
+      // Result codes from failed services
+      expect(isErrorLine("(Result: exit-code)")).toBe(true);
+      expect(isErrorLine("(Result: core-dump)")).toBe(true);
+      expect(isErrorLine("(Result: timeout)")).toBe(true);
+      expect(isErrorLine("(Result: signal)")).toBe(true);
+    });
+
+    it("should not filter Active line with running state", () => {
+      const input = `● nginx.service
+   Active: active (running) since Mon
+   Memory: 12.0M`;
+      const result = compressor.compress(input);
+      expect(result.output).toContain("active (running)");
+    });
+  });
+
+  describe("journalctl output", () => {
+    it("should filter routine systemd messages", () => {
+      const input = `Mar 21 10:00:00 host systemd[1]: Started nginx.service
+Mar 21 10:00:01 host nginx[123]: ERROR: config error
+Mar 21 10:00:02 host systemd[1]: Stopped nginx.service
+Mar 21 10:00:03 host systemd[1]: Created slice User Slice`;
+      const result = compressor.compress(input, { command: "journalctl" });
+      expect(result.output).toContain("ERROR: config error");
+      expect(result.output).not.toContain("Started nginx");
+      expect(result.output).not.toContain("Stopped nginx");
+      expect(result.output).not.toContain("Created slice");
+    });
+
+    it("should detect kernel segfault as error", () => {
+      expect(isErrorLine("kernel: nginx[1234]: segfault at 0")).toBe(true);
+      expect(isErrorLine("kernel: Out of memory: oom-killer invoked")).toBe(true);
+    });
+
+    it("should keep actual error log lines", () => {
+      const input = `Mar 21 10:00:00 host app[123]: [failed] connection timeout
+Mar 21 10:00:01 host systemd[1]: Started app.service`;
+      const result = compressor.compress(input);
+      expect(result.output).toContain("[failed]");
+    });
+
+    it("should filter Reached target and Listening on messages", () => {
+      const input = `Mar 21 10:00:00 host systemd[1]: Reached target Basic System
+Mar 21 10:00:01 host systemd[1]: Listening on Journal Socket
+Mar 21 10:00:02 host nginx[123]: Configuration OK`;
+      const result = compressor.compress(input, { command: "journalctl" });
+      expect(result.output).toContain("Configuration OK");
+      expect(result.output).not.toContain("Reached target");
+      expect(result.output).not.toContain("Listening on");
+    });
+  });
+
+  describe("top output", () => {
+    it("should filter top header lines", () => {
+      const input = `top - 10:00:00 up 5 days, 2:30, 1 user
+Tasks: 150 total,   1 running, 149 sleeping
+%Cpu(s):  5.0 us,  2.0 sy,  0.0 ni
+MiB Mem :   8000.0 total,   2000.0 free
+MiB Swap:   2048.0 total,   2048.0 free
+  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 1234 root      20   0  500000  50000  10000 S  25.0   0.6   1:23.45 nginx
+ 5678 www-data  20   0  300000  30000   8000 S  10.0   0.4   0:45.67 php-fpm`;
+      const result = compressor.compress(input, { command: "top" });
+      expect(result.output).toContain("nginx");
+      expect(result.output).toContain("php-fpm");
+      expect(result.output).not.toContain("top - 10:00:00");
+      expect(result.output).not.toContain("Tasks: 150");
+      expect(result.output).not.toContain("%Cpu(s)");
+      expect(result.output).not.toContain("MiB Mem");
+    });
+
+    it("should keep process lines", () => {
+      const input = ` 1234 root      20   0  500000  50000  10000 S  95.0   0.6   1:23.45 high-cpu-process`;
+      const result = compressor.compress(input);
+      expect(result.output).toContain("high-cpu-process");
+    });
+  });
+});

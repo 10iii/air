@@ -1,6 +1,6 @@
 # AIR Project Progress
 
-> Last updated: 2026-03-17 (DB audit decisions applied)
+> Last updated: 2026-03-21 (P1-6 tree-sitter WASM integration)
 
 ## Phase 1: Core Compressors (Complete)
 
@@ -22,7 +22,7 @@
 | Tool | Status | Description |
 |---|---|---|
 | `air-grep` | ✅ Shipped | Grep/ripgrep output compression with file grouping, match merging |
-| `air-web` | ✅ Shipped | HTML → clean markdown/text extraction for AI consumption |
+| `air-web` | ✅ Shipped | HTML → clean markdown/text extraction for AI consumption + DOM snapshot mode |
 | `air-test` | ✅ Shipped | Test runner output compression (pytest, jest, vitest, go, cargo) |
 | `air-ls` | ✅ Shipped | Directory listing compression with depth control, type grouping |
 | `air-diff` | ✅ Shipped | Git diff compression with summary/compact/full levels |
@@ -41,6 +41,35 @@
 | `air-api` | ✅ Shipped | API/JSON response compression with depth limiting, array truncation, null/default removal |
 | `air-search` | ✅ Shipped | Search results compression with multi-engine aggregation |
 | `air-media` | ✅ Shipped | Media transcript compression (SRT/VTT/text) with timestamp removal, speaker merging, filler word removal |
+
+---
+
+## Phase 2A: air-bash Profile + air-read Skeleton (In Progress)
+
+### air-bash Profile System Expansion (Complete)
+
+**Status**: ✅ Complete (2026-03-21)
+**Tests**: 898 passing (17 suites)
+
+Added systemctl/journalctl/top noise/error patterns:
+- `NOISE_PATTERNS`: Memory/Tasks/CGroup/CPU (systemctl), Started/Stopped/Created slice (journalctl), top header lines
+- `ERROR_PATTERNS`: Active failed/inactive, Result exit-code/core-dump/timeout/signal, segfault, oom-killer
+
+### air-read tree-sitter WASM Integration (Complete)
+
+**Status**: ✅ Complete (2026-03-21)
+**Tests**: 918 passing (17 suites, +20 tree-sitter tests)
+
+Features:
+- Auto-discovery of `tree-sitter-wasms` package WASM files
+- Multi-path WASM resolution: user locator → tree-sitter-wasms → default fallback
+- `compressAsync()` method for async tree-sitter skeleton mode
+- CLI `--use-tree-sitter` flag
+- MCP handler `useTreeSitter` parameter
+- OC plugin `useTreeSitter` parameter
+- Graceful fallback to regex-based skeleton when tree-sitter unavailable
+
+Supported languages (15): TypeScript, JavaScript, TSX, Python, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin, Scala
 
 ---
 
@@ -119,18 +148,6 @@ packages/
 - DuckDuckGo: `duck-duck-scrape` npm package (blocked in China)
 - 360 Search: listed as proposal for further discussion (requires Cookie pre-fetch)
 - No API keys required — client-side HTML scraping only
-
-### air-web DOM Snapshot Mode (Planned)
-- New compression mode for browser automation DOM snapshots
-- Smart filtering of UI labels, ads, navigation for large pages (>5MB)
-
-### air-bash Profile System Expansion (Planned)
-- Extend with systemctl/journalctl/top patterns
-
-### air-read Skeleton/Focused Modes (Two-Step Plan — Decided)
-- **Step 1（近期）**: 正则 + 缩进启发式提取函数/类签名，零依赖，预期 TSR 30-50%
-- **Step 2（远期，可选）**: tree-sitter WASM 作为 optional peer dependency，未安装时降级到 Step 1
-- 参考实现：Cline、Continue、Roo Code、repomix 均用 `web-tree-sitter` + `tree-sitter-wasms`
 
 ### air-context (OC-Only)
 - Formalized as OpenCode-only plugin, NOT cross-framework

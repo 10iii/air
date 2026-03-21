@@ -6,6 +6,7 @@ type CoreModule = Record<string, unknown>;
 
 interface CompressorLike {
   compress(content: string, options?: Record<string, unknown>): { output: string };
+  compressAsync?(content: string, options?: Record<string, unknown>): Promise<{ output: string }>;
 }
 
 type CompressorConstructor = new () => CompressorLike;
@@ -34,6 +35,22 @@ function compressWith(
   return result.output;
 }
 
+async function compressWithAsync(
+  compressorName: string,
+  content: string,
+  options?: Record<string, unknown>,
+): Promise<string> {
+  const compressor = getCompressor(compressorName);
+  if (compressor.compressAsync) {
+    const result = await compressor.compressAsync(content, options);
+    if (!result || typeof result.output !== "string") {
+      throw new Error(`Compressor '${compressorName}' returned an invalid result`);
+    }
+    return result.output;
+  }
+  return compressWith(compressorName, content, options);
+}
+
 function formatError(toolName: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `[${toolName}] ${message}`;
@@ -51,16 +68,21 @@ const AirPlugin: Plugin = async () => {
           maxTokens: tool.schema.number().int().positive().optional(),
           lineNumbers: tool.schema.boolean().optional(),
           mode: tool.schema.enum(["full", "skeleton"]).optional(),
+          useTreeSitter: tool.schema.boolean().optional(),
         },
         async execute(args) {
           try {
-            return compressWith("ReadCompressor", args.content, {
+            const options = {
               fileName: args.fileName,
               maxLines: args.maxLines,
               maxTokens: args.maxTokens,
               lineNumbers: args.lineNumbers,
               mode: args.mode,
-            });
+              useTreeSitter: args.useTreeSitter,
+            };
+            return args.useTreeSitter
+              ? await compressWithAsync("ReadCompressor", args.content, options)
+              : compressWith("ReadCompressor", args.content, options);
           } catch (error) {
             return formatError("air_read", error);
           }
@@ -178,6 +200,7 @@ const AirPlugin: Plugin = async () => {
           format: tool.schema.enum(["markdown", "text"]).optional(),
           codeOnly: tool.schema.boolean().optional(),
           score: tool.schema.boolean().optional(),
+          domSnapshot: tool.schema.boolean().optional(),
         },
         async execute(args) {
           try {
@@ -188,6 +211,7 @@ const AirPlugin: Plugin = async () => {
               format: args.format,
               codeOnly: args.codeOnly,
               score: args.score,
+              domSnapshot: args.domSnapshot,
             });
           } catch (error) {
             return formatError("air_web", error);

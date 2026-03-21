@@ -20,9 +20,6 @@ function requirePositiveInteger(
   return Math.floor(value);
 }
 
-/**
- * `air read` - Compress file content for AI consumption.
- */
 export const readCommand = new Command("read")
   .description("Compress file content for AI consumption")
   .argument("<file>", "File path to read")
@@ -33,8 +30,9 @@ export const readCommand = new Command("read")
   .option("--no-collapse-imports", "Don't collapse import blocks")
   .option("--no-collapse-blanks", "Don't collapse blank lines")
   .option("--mode <mode>", "Output mode: full or skeleton", "full")
+  .option("--use-tree-sitter", "Use tree-sitter for skeleton mode (async, requires web-tree-sitter)")
   .action(
-    (
+    async (
       file: string,
       options: {
         lineNumbers?: boolean;
@@ -44,6 +42,7 @@ export const readCommand = new Command("read")
         collapseImports?: boolean;
         collapseBlanks?: boolean;
         mode?: string;
+        useTreeSitter?: boolean;
       }
     ) => {
       let content: string;
@@ -80,7 +79,7 @@ export const readCommand = new Command("read")
       }
 
       const compressor = new ReadCompressor();
-      const result = compressor.compress(content, {
+      const compressOpts = {
         lineNumbers: options.lineNumbers ?? false,
         maxLines,
         maxTokens,
@@ -89,7 +88,12 @@ export const readCommand = new Command("read")
         collapseBlanks: options.collapseBlanks ?? true,
         fileName: file,
         mode: mode as "full" | "skeleton",
-      });
+        useTreeSitter: options.useTreeSitter ?? false,
+      };
+
+      const result = options.useTreeSitter
+        ? await compressor.compressAsync(content, compressOpts)
+        : compressor.compress(content, compressOpts);
 
       process.stdout.write(result.output + "\n");
     }

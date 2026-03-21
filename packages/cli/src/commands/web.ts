@@ -35,6 +35,7 @@ export const webCommand = new Command("web")
   .option("--format <type>", "Output format: markdown|text", parseFormat)
   .option("--code-only", "Extract only fenced code blocks")
   .option("--score", "Include content density score line")
+  .option("--dom-snapshot", "DOM snapshot mode optimized for browser automation")
   .action(
     (options: {
       url?: string;
@@ -43,6 +44,7 @@ export const webCommand = new Command("web")
       format?: "markdown" | "text";
       codeOnly?: boolean;
       score?: boolean;
+      domSnapshot?: boolean;
     }) => {
       const input = readFileSync(0, "utf-8");
       const maxLines = requirePositiveInteger("max-lines", options.maxLines);
@@ -56,6 +58,7 @@ export const webCommand = new Command("web")
         format: options.format ?? "markdown",
         codeOnly: options.codeOnly ?? false,
         score: options.score ?? false,
+        domSnapshot: options.domSnapshot ?? false,
       });
 
       process.stdout.write(result.output + "\n");

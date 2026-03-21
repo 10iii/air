@@ -16,6 +16,7 @@ import {
   isImportLine,
   type LanguageInfo,
 } from "../parsers/file.js";
+import { tryLoadTreeSitter, isTreeSitterAvailable } from "../parsers/tree-sitter.js";
 import { estimateTokens, collapseBlanks } from "../utils/index.js";
 
 export interface ReadOptions {
@@ -35,6 +36,8 @@ export interface ReadOptions {
   fileName?: string;
   /** Output mode: "full" (default, current behavior) or "skeleton" (collapse function bodies) */
   mode?: "full" | "skeleton";
+  /** Use tree-sitter for skeleton mode when available (default: true for compressAsync, ignored for sync compress) */
+  useTreeSitter?: boolean;
 }
 
 // estimateTokens moved to utils/index.ts
@@ -901,5 +904,36 @@ export class ReadCompressor {
         mode: opts.mode,
       },
     };
+  }
+
+  async compressAsync(content: string, options?: ReadOptions): Promise<CompressResult> {
+    const opts = { useTreeSitter: true, ...options };
+
+    if (opts.mode === "skeleton" && opts.useTreeSitter) {
+      const ts = await tryLoadTreeSitter();
+      if (ts.available) {
+        const lang = detectLanguage(opts.fileName ?? "");
+        const skeletonContent = await ts.collapseToSkeleton(content, lang.language, opts.fileName);
+        const result = this.compress(skeletonContent, { ...opts, mode: "full" });
+        return {
+          ...result,
+          metadata: {
+            ...result.metadata,
+            usedTreeSitter: true,
+          },
+        };
+      }
+    }
+
+    return this.compress(content, opts);
+  }
+
+  static isTreeSitterAvailable(): boolean {
+    return isTreeSitterAvailable();
+  }
+
+  static async preloadTreeSitter(): Promise<boolean> {
+    const result = await tryLoadTreeSitter();
+    return result.available;
   }
 }

@@ -163,6 +163,23 @@ const NOISE_PATTERNS: RegExp[] = [
   /^#\d+\s+\d+\.\d+\s/,
   // Time elapsed indicators (not useful for AI)
   /^\s*\[[\d:]+\]\s*$/,
+  // systemctl: verbose metadata lines (less useful for AI)
+  /^\s*(Memory|Tasks|CGroup|CPU):\s/,
+  /^\s*└─\d+\s/,
+  /^\s*Loaded:\s.*;\s*(enabled|disabled|static)/,
+  /^\s*Docs:\s/,
+  /^\s*Process:\s+\d+\s+ExecStart/,
+  // journalctl: routine systemd start/stop messages
+  /systemd\[\d+\]:\s*(Started|Stopped|Starting|Stopping)\s/,
+  /systemd\[\d+\]:\s*Created slice/,
+  /systemd\[\d+\]:\s*Reached target/,
+  /systemd\[\d+\]:\s*Listening on/,
+  // top: header lines that repeat in batch mode
+  /^top\s+-\s+\d+:\d+:\d+\s+up\s/,
+  /^Tasks:\s+\d+\s+total/,
+  /^%?Cpu\(s\):/i,
+  /^[KMG]iB\s+(Mem|Swap)\s*:/,
+  /^\s*PID\s+USER\s+PR\s+NI\s+VIRT\s+RES\s+SHR\s+S\s+%CPU\s+%MEM/,
 ];
 
 /**
@@ -240,6 +257,15 @@ const ERROR_PATTERNS: RegExp[] = [
   /out of memory/i,
   /compilation? (error|failed)/i,
   /build\s+failed/i,
+  // systemctl error states
+  /Active:\s*(failed|inactive\s*\(dead\))/i,
+  /\(Result:\s*(exit-code|core-dump|timeout|signal)\)/i,
+  /activating\s*\(auto-restart\)/i,
+  /Unit\s+\S+\s+could not be found/i,
+  // journalctl error priorities (emerg/alert/crit/err = 0-3)
+  /kernel:\s.*segfault/i,
+  /kernel:\s.*oom-killer/i,
+  /\[failed\]/i,
 ];
 
 /** Patterns indicating warning lines (medium priority). */

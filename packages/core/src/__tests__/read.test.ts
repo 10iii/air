@@ -1774,3 +1774,51 @@ describe("skeleton mode", () => {
     });
   });
 });
+
+describe("compressAsync and tree-sitter integration", () => {
+  const compressor = new ReadCompressor();
+
+  it("should return same result as sync compress when tree-sitter unavailable", async () => {
+    const input = `function hello() {
+  console.log("hello");
+  console.log("world");
+  console.log("!");
+  return true;
+}`;
+    const syncResult = compressor.compress(input, { mode: "skeleton", fileName: "test.ts" });
+    const asyncResult = await compressor.compressAsync(input, { mode: "skeleton", fileName: "test.ts" });
+    expect(asyncResult.compressedSize).toBe(syncResult.compressedSize);
+  });
+
+  it("should respect useTreeSitter=false option", async () => {
+    const input = `function hello() {
+  console.log("hello");
+  console.log("world");
+  console.log("!");
+  return true;
+}`;
+    const syncResult = compressor.compress(input, { mode: "skeleton", fileName: "test.ts" });
+    const asyncResult = await compressor.compressAsync(input, {
+      mode: "skeleton",
+      fileName: "test.ts",
+      useTreeSitter: false,
+    });
+    expect(asyncResult.output).toBe(syncResult.output);
+  });
+
+  it("should work with full mode (no tree-sitter needed)", async () => {
+    const input = "line1\nline2\nline3";
+    const result = await compressor.compressAsync(input, { mode: "full" });
+    expect(result.output).toContain("line1");
+  });
+
+  it("static isTreeSitterAvailable should return boolean", () => {
+    const available = ReadCompressor.isTreeSitterAvailable();
+    expect(typeof available).toBe("boolean");
+  });
+
+  it("static preloadTreeSitter should return boolean", async () => {
+    const result = await ReadCompressor.preloadTreeSitter();
+    expect(typeof result).toBe("boolean");
+  });
+});

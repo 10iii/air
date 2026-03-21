@@ -1,7 +1,26 @@
 {
   "name": "@10iii/air-oc-plugin",
   "version": "0.1.0",
+  "description": "OpenCode plugin for AIR - AI-optimized tool output compression",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/10iii/air.git",
+    "directory": "packages/oc-plugin"
+  },
+  "homepage": "https://github.com/10iii/air#readme",
+  "bugs": {
+    "url": "https://github.com/10iii/air/issues"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "opencode",
+    "plugin",
+    "compression",
+    "ai-tools"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

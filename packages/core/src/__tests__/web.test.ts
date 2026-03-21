@@ -461,3 +461,154 @@ describe("WebCompressor large HTML handling", () => {
     expect(result.output).toContain("```");
   }, 30000);
 });
+
+describe("WebCompressor domSnapshot mode", () => {
+  const snapshotHtml = `
+  <html>
+    <body>
+      <script>window.analytics.track();</script>
+      <style>.hidden { display: none }</style>
+      <nav aria-label="main">Navigation Menu</nav>
+      <header role="banner">Site Header</header>
+      <div aria-hidden="true">Hidden accessibility content</div>
+      <main role="main">
+        <h1>Page Title</h1>
+        <p>Main content paragraph with useful information.</p>
+        <a href="/contact">Contact Us</a>
+        <form>
+          <input type="text" name="email" placeholder="Enter email" />
+          <button type="submit">Submit</button>
+        </form>
+      </main>
+      <footer role="contentinfo">Copyright 2024</footer>
+      <div class="ad-banner">Advertisement</div>
+      <iframe src="https://ads.doubleclick.net/frame"></iframe>
+    </body>
+  </html>`;
+
+  it("removes script and style tags", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).not.toContain("window.analytics");
+    expect(result.output).not.toContain(".hidden {");
+  });
+
+  it("removes navigation and header elements", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).not.toContain("Navigation Menu");
+    expect(result.output).not.toContain("Site Header");
+  });
+
+  it("removes footer and ad elements", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).not.toContain("Copyright 2024");
+    expect(result.output).not.toContain("Advertisement");
+  });
+
+  it("removes aria-hidden content", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).not.toContain("Hidden accessibility content");
+  });
+
+  it("removes ad iframes", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).not.toContain("doubleclick");
+  });
+
+  it("extracts main content headings", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).toContain("Page Title");
+  });
+
+  it("extracts paragraph content", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).toContain("Main content paragraph");
+  });
+
+  it("extracts links with markdown format", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).toContain("[Contact Us](/contact)");
+  });
+
+  it("extracts form elements", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    expect(result.output).toContain("[input:text");
+    expect(result.output).toContain("[button:submit");
+  });
+
+  it("uses cheerio-large extraction source", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true });
+    const meta = getMeta(result);
+    expect(meta.extractionSource).toBe("cheerio-large");
+  });
+
+  it("respects maxLines option", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true, maxLines: 3 });
+    const lines = result.output.split("\n").filter((l) => l.trim() !== "");
+    expect(lines.length).toBeLessThanOrEqual(3);
+  });
+
+  it("respects maxTokens option", () => {
+    const result = compressor.compress(snapshotHtml, { domSnapshot: true, maxTokens: 50 });
+    expect(result.output.length).toBeGreaterThan(0);
+    expect(result.output).toContain("--- air:");
+  });
+
+  it("removes elements with hidden class patterns", () => {
+    const html = `
+    <html><body>
+      <div class="sr-only">Screen reader only</div>
+      <div class="visually-hidden">Visually hidden</div>
+      <main><p>Visible content</p></main>
+    </body></html>`;
+    const result = compressor.compress(html, { domSnapshot: true });
+    expect(result.output).not.toContain("Screen reader only");
+    expect(result.output).not.toContain("Visually hidden");
+    expect(result.output).toContain("Visible content");
+  });
+
+  it("handles empty HTML gracefully", () => {
+    const result = compressor.compress("", { domSnapshot: true });
+    expect(result.output).toContain("--- air:");
+  });
+
+  it("handles body-only HTML", () => {
+    const html = "<body><p>Simple content</p></body>";
+    const result = compressor.compress(html, { domSnapshot: true });
+    expect(result.output).toContain("Simple content");
+  });
+
+  it("extracts select element options", () => {
+    const html = `
+    <html><body><main>
+      <select name="country">
+        <option>USA</option>
+        <option>Canada</option>
+        <option>UK</option>
+      </select>
+    </main></body></html>`;
+    const result = compressor.compress(html, { domSnapshot: true });
+    expect(result.output).toContain("[select");
+    expect(result.output).toContain("options=[USA, Canada, UK]");
+  });
+
+  it("avoids duplicate link text when link is inside paragraph", () => {
+    const html = `
+    <html><body><main>
+      <h1>Title</h1>
+      <p>Click here to <a href="/page">visit page</a> for more info.</p>
+    </main></body></html>`;
+    const result = compressor.compress(html, { domSnapshot: true });
+    const linkMatches = result.output.match(/\[visit page\]/g);
+    expect(linkMatches).toBeNull();
+  });
+
+  it("extracts textarea content", () => {
+    const html = `
+    <html><body><main>
+      <textarea name="message">Hello world this is a test message</textarea>
+    </main></body></html>`;
+    const result = compressor.compress(html, { domSnapshot: true });
+    expect(result.output).toContain("[textarea");
+    expect(result.output).toContain("Hello world");
+  });
+});

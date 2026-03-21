@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name("air")
   .description("AIR - AI-optimized Information Representation")
-  .version("0.1.0");
+  .version("0.1.0", "-v, --version", "output the version number");
 
 program.addCommand(readCommand);
 program.addCommand(bashCommand);

@@ -8,6 +8,22 @@ import { estimateTokens, collapseBlanks } from "../utils/index.js";
 const LARGE_HTML_THRESHOLD = 5 * 1024 * 1024;
 const NOISE_SELECTORS =
   "script,style,nav,footer,header,aside,.ad,.sidebar,.cookie-banner,noscript,iframe";
+
+const DOM_SNAPSHOT_REMOVE_SELECTORS = [
+  'script', 'style', 'noscript', 'template',
+  'nav', 'header', 'footer', 'aside',
+  '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]', '[role="complementary"]',
+  '[aria-hidden="true"]', '[hidden]',
+  '[style*="display: none"]', '[style*="display:none"]',
+  '[style*="visibility: hidden"]', '[style*="visibility:hidden"]',
+  '.ad', '.ads', '.advertisement', '[class*="ad-"]', '[class*="ads-"]',
+  '[id*="ad-"]', '[id*="ads-"]', '[data-ad]', '[data-ads]',
+  'iframe[src*="ad"]', 'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
+  '.cookie-banner', '.cookie-consent', '[class*="cookie"]',
+  '.popup', '.modal-backdrop', '.overlay',
+  'svg', 'path', 'canvas',
+].join(',');
+
 const CODE_BLOCK_REGEX = /```[^\n]*\n[\s\S]*?```/g;
 
 type ExtractionSource =
@@ -37,6 +53,8 @@ export interface WebOptions {
   format?: "markdown" | "text";
   codeOnly?: boolean;
   score?: boolean;
+  /** DOM snapshot mode: optimized for browser automation snapshots */
+  domSnapshot?: boolean;
 }
 
 function normalizeNewlines(text: string): string {
@@ -64,6 +82,110 @@ function preCleanHtml(content: string): { $: CheerioAPI; cleanedHtml: string } {
   const $ = load(content);
   $(NOISE_SELECTORS).remove();
   return { $, cleanedHtml: $.html() };
+}
+
+function cleanDomSnapshot($: CheerioAPI): void {
+  $(DOM_SNAPSHOT_REMOVE_SELECTORS).remove();
+  
+  $('[class]').each((_, el) => {
+    const classes = $(el).attr('class') || '';
+    if (/\b(hidden|invisible|sr-only|visually-hidden)\b/i.test(classes)) {
+      $(el).remove();
+    }
+  });
+  
+  $('[onclick], [onmouseover], [onmouseout], [onload], [onerror]').each((_, el) => {
+    const $el = $(el);
+    $el.removeAttr('onclick');
+    $el.removeAttr('onmouseover');
+    $el.removeAttr('onmouseout');
+    $el.removeAttr('onload');
+    $el.removeAttr('onerror');
+  });
+  
+  $('[data-ad], [data-ads]').removeAttr('data-ad').removeAttr('data-ads');
+}
+
+function extractDomSnapshotContent($: CheerioAPI): string {
+  const mainContent = $('main, [role="main"], article, .content, #content, .main, #main');
+  const target = mainContent.length > 0 ? mainContent.first() : $('body');
+  
+  const lines: string[] = [];
+  const seenLinkTexts = new Set<string>();
+  
+  target.find('h1, h2, h3, h4, h5, h6').each((_, el) => {
+    const text = normalizeInlineWhitespace($(el).text());
+    if (text) {
+      const level = parseInt(el.tagName.charAt(1), 10);
+      lines.push('#'.repeat(level) + ' ' + text);
+    }
+  });
+  
+  target.find('p, li, td, th, dd, dt, blockquote').each((_, el) => {
+    const $el = $(el);
+    const text = normalizeInlineWhitespace($el.text());
+    if (text && text.length > 2) {
+      lines.push(text);
+      $el.find('a').each((_, link) => {
+        const linkText = normalizeInlineWhitespace($(link).text());
+        if (linkText) seenLinkTexts.add(linkText.toLowerCase());
+      });
+    }
+  });
+  
+  target.find('a[href]').each((_, el) => {
+    const text = normalizeInlineWhitespace($(el).text());
+    const href = $(el).attr('href') || '';
+    if (text && href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+      if (!seenLinkTexts.has(text.toLowerCase())) {
+        lines.push(`[${text}](${href})`);
+      }
+    }
+  });
+  
+  target.find('input, select, textarea, button').each((_, el) => {
+    const $el = $(el);
+    const tag = el.tagName.toLowerCase();
+    const type = $el.attr('type') || '';
+    const name = $el.attr('name') || $el.attr('id') || '';
+    const placeholder = $el.attr('placeholder') || '';
+    const label = $el.attr('aria-label') || '';
+    const value = $el.attr('value') || '';
+    
+    let desc = `[${tag}`;
+    if (type) desc += `:${type}`;
+    if (name) desc += ` name="${name}"`;
+    if (placeholder) desc += ` placeholder="${placeholder}"`;
+    if (label) desc += ` label="${label}"`;
+    if (value && type !== 'password') desc += ` value="${value}"`;
+    if (tag === 'button') {
+      const btnText = normalizeInlineWhitespace($el.text());
+      if (btnText) desc += ` "${btnText}"`;
+    }
+    if (tag === 'select') {
+      const options = $el.find('option').map((_, opt) => $(opt).text().trim()).get().slice(0, 5);
+      if (options.length > 0) desc += ` options=[${options.join(', ')}]`;
+    }
+    if (tag === 'textarea') {
+      const content = normalizeInlineWhitespace($el.text());
+      if (content) {
+        const preview = content.length > 50 ? content.slice(0, 50) + '...' : content;
+        desc += ` "${preview}"`;
+      }
+    }
+    desc += ']';
+    lines.push(desc);
+  });
+  
+  const seen = new Set<string>();
+  const uniqueLines = lines.filter(line => {
+    const normalized = line.toLowerCase().trim();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+  
+  return uniqueLines.join('\n');
 }
 
 function calculateDensity(html: string, textOverride?: string, $override?: CheerioAPI): DensityScore {
@@ -326,7 +448,17 @@ export class WebCompressor {
     try {
       const { $, cleanedHtml } = preCleanHtml(input);
 
-      if (isLargeContent) {
+      // DOM snapshot mode: optimized for browser automation snapshots
+      if (opts.domSnapshot) {
+        cleanDomSnapshot($);
+        const snapshotContent = extractDomSnapshotContent($);
+        extracted = {
+          html: snapshotContent,
+          text: snapshotContent,
+          metrics: calculateDensity($.html(), snapshotContent),
+          source: "cheerio-large",
+        };
+      } else if (isLargeContent) {
         const candidate = pickBestDenseElement($);
         if (candidate) {
           extracted = { ...candidate, source: "cheerio-large" };
