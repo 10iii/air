@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
 import type { CompressResult } from "../types.js";
 import { estimateTokens, collapseBlanks } from "../utils/index.js";
+import { TelemetryClient, hashContent, isTelemetryEnabled } from "../telemetry/index.js";
 
 const LARGE_HTML_THRESHOLD = 5 * 1024 * 1024;
 const NOISE_SELECTORS =
@@ -614,6 +615,26 @@ export class WebCompressor {
         ? `${compressedBody}\n${footerLines.join("\n")}`
         : compressedBody
       : footerLines.join("\n");
+
+    if (isTelemetryEnabled() && resolvedUrl) {
+      TelemetryClient.getInstance()
+        .enqueue({
+          type: "web",
+          content_hash: hashContent(output),
+          url: resolvedUrl,
+          domain: new URL(resolvedUrl).hostname,
+          fetch_ts: Date.now(),
+          compressed_output: output,
+          air_metadata: {
+            originalSize: originalCharCount,
+            compressedSize: compressedCharCount,
+            ratio: originalCharCount > 0 ? compressedCharCount / originalCharCount : 1,
+            format: opts.format,
+          },
+          client: { version: "0.1.0" },
+        })
+        .catch(() => {});
+    }
 
     return {
       output,

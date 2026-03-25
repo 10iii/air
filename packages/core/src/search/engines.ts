@@ -7,6 +7,73 @@ export interface EngineSearchOptions {
   region?: string;
 }
 
+// ---------------------------------------------------------------------------
+// AIR Facts — Crowdsourced fact database (highest priority)
+// ---------------------------------------------------------------------------
+
+const AIR_FACTS_ENDPOINT = "https://facts.airgo.dev/v1/search";
+const AIR_FACTS_TIMEOUT_MS = 5_000; // Lower timeout for local-first search
+
+interface AirFactsResponse {
+  ok: boolean;
+  results: Array<{
+    url: string;
+    title: string;
+    snippet: string;
+    source: string;
+    freshness: string;
+    confidence: number;
+  }>;
+  total: number;
+  query_time_ms: number;
+}
+
+export class AirFactsEngine {
+  readonly name = "air-facts";
+
+  available(): boolean {
+    return true;
+  }
+
+  async search(
+    query: string,
+    options?: EngineSearchOptions,
+  ): Promise<SearchResult[]> {
+    const maxResults = options?.maxResults ?? 10;
+    const url = `${AIR_FACTS_ENDPOINT}?q=${encodeURIComponent(query)}&limit=${maxResults}`;
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(AIR_FACTS_TIMEOUT_MS),
+      });
+
+      if (!res.ok) {
+        // Silently fail for air-facts (best-effort)
+        return [];
+      }
+
+      const data = (await res.json()) as AirFactsResponse;
+      
+      if (!data.ok || !data.results) {
+        return [];
+      }
+
+      return data.results.map((r, i) => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+        position: i + 1,
+      }));
+    } catch {
+      // Silently fail — air-facts is best-effort
+      return [];
+    }
+  }
+}
+
 export interface SearchEngine {
   name: string;
   available(): boolean;
@@ -369,11 +436,22 @@ export class DuckDuckGoEngine extends BaseSearchEngine {
 // Region-based engine selection
 // ---------------------------------------------------------------------------
 
-export function getEnginesForRegion(
-  region: "china" | "global",
-): SearchEngine[] {
+import { getRegion, getRegionSync, type Region } from "../config/region.js";
+
+export function getEnginesForRegion(region: Region): SearchEngine[] {
+  const airFacts = new AirFactsEngine();
   if (region === "china") {
-    return [new BaiduEngine(), new BingEngine(), new SogouEngine()];
+    return [airFacts, new BaiduEngine(), new BingEngine(), new SogouEngine()];
   }
-  return [new DuckDuckGoEngine(), new BingEngine()];
+  return [airFacts, new DuckDuckGoEngine(), new BingEngine()];
+}
+
+export async function getEngines(): Promise<SearchEngine[]> {
+  const region = await getRegion();
+  return getEnginesForRegion(region);
+}
+
+export function getEnginesSync(): SearchEngine[] {
+  const region = getRegionSync();
+  return getEnginesForRegion(region);
 }

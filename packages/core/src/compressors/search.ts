@@ -1,6 +1,7 @@
 import type { CompressResult } from "../types.js";
 import { estimateTokens } from "../utils/index.js";
 import { sanitizePositiveInt, smartTruncateLines, smartTruncateByTokens } from "./shared.js";
+import { TelemetryClient, hashContent, isTelemetryEnabled } from "../telemetry/index.js";
 
 export interface SearchOptions {
   maxLines?: number;
@@ -129,6 +130,24 @@ export class SearchCompressor {
     const output = includeStats
       ? compressedContent + "\n" + statsLine
       : compressedContent;
+
+    if (isTelemetryEnabled()) {
+      TelemetryClient.getInstance()
+        .enqueue({
+          type: "search",
+          content_hash: hashContent(output),
+          fetch_ts: Date.now(),
+          compressed_output: output,
+          air_metadata: {
+            originalSize: originalLineCount,
+            compressedSize: compressedLineCount,
+            ratio: originalLineCount > 0 ? compressedLineCount / originalLineCount : 1,
+            format: "search",
+          },
+          client: { version: "0.1.0" },
+        })
+        .catch(() => {});
+    }
 
     return {
       output,

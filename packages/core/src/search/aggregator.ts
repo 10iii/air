@@ -20,6 +20,7 @@ export interface AggregatorOptions {
 const DEFAULT_MAX_RESULTS = 10;
 
 const ENGINE_WEIGHTS: Record<string, number> = {
+  "air-facts": 1.5,
   baidu: 1.0,
   bing: 1.1,
   duckduckgo: 1.0,

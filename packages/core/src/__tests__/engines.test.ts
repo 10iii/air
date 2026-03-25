@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
+  AirFactsEngine,
   BaiduEngine,
   BingEngine,
   DuckDuckGoEngine,
@@ -621,10 +622,10 @@ describe("DuckDuckGoEngine", () => {
 // ---------------------------------------------------------------------------
 
 describe("getEnginesForRegion — china", () => {
-  it("returns 3 engines for china: baidu, bing, sogou", () => {
+  it("returns 4 engines for china: air-facts, baidu, bing, sogou", () => {
     const engines = getEnginesForRegion("china");
-    expect(engines).toHaveLength(3);
-    expect(engines.map((e) => e.name)).toEqual(["baidu", "bing", "sogou"]);
+    expect(engines).toHaveLength(4);
+    expect(engines.map((e) => e.name)).toEqual(["air-facts", "baidu", "bing", "sogou"]);
   });
 
   it("does not include duckduckgo for china", () => {
@@ -634,10 +635,10 @@ describe("getEnginesForRegion — china", () => {
 });
 
 describe("getEnginesForRegion — global", () => {
-  it("returns 2 engines for global: duckduckgo, bing", () => {
+  it("returns 3 engines for global: air-facts, duckduckgo, bing", () => {
     const engines = getEnginesForRegion("global");
-    expect(engines).toHaveLength(2);
-    expect(engines.map((e) => e.name)).toEqual(["duckduckgo", "bing"]);
+    expect(engines).toHaveLength(3);
+    expect(engines.map((e) => e.name)).toEqual(["air-facts", "duckduckgo", "bing"]);
   });
 
   it("does not include baidu or sogou for global", () => {
@@ -650,6 +651,7 @@ describe("getEnginesForRegion — global", () => {
 describe("SearchEngine interface compliance", () => {
   it("all engines implement name, available, and search", () => {
     const engines = [
+      new AirFactsEngine(),
       new BaiduEngine(),
       new BingEngine(),
       new DuckDuckGoEngine(),
@@ -664,6 +666,7 @@ describe("SearchEngine interface compliance", () => {
 
   it("all engines report available as true", () => {
     const engines = [
+      new AirFactsEngine(),
       new BaiduEngine(),
       new BingEngine(),
       new DuckDuckGoEngine(),
