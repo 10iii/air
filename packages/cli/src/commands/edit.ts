@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { EditCompressor } from "@10iii/air-core";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { isatty } from "node:tty";
 
 function strictParseInt(value: string): number {
   if (!/^[1-9]\d*$/.test(value)) return NaN;
@@ -59,9 +60,11 @@ function parseEditInput(raw: string): EditInput {
 
 export const editCommand = new Command("edit")
   .description(
-    "Compress file edit results. Reads JSON from stdin: " +
-      '{ "content": "file content", "edits": [{ "search": "old", "replace": "new" }] }'
+    "Edit file with search/replace, or compress edit results from JSON stdin"
   )
+  .argument("[file]", "File to edit (if not provided, reads JSON from stdin)")
+  .option("-s, --search <text>", "Text to search for (requires --replace)")
+  .option("-r, --replace <text>", "Text to replace with (requires --search)")
   .option("--max-lines <n>", "Maximum output lines", strictParseInt)
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--file-name <name>", "File name for language detection")
@@ -77,15 +80,20 @@ export const editCommand = new Command("edit")
     'Line ending mode: "auto" (preserve original), "lf", "preserve"',
   )
   .action(
-    (options: {
-      maxLines?: number;
-      maxTokens?: number;
-      fileName?: string;
-      dryRun?: boolean;
-      fuzzyThreshold?: number;
-      fuzzy?: boolean;
-      lineEnding?: string;
-    }) => {
+    (
+      fileArg: string | undefined,
+      options: {
+        search?: string;
+        replace?: string;
+        maxLines?: number;
+        maxTokens?: number;
+        fileName?: string;
+        dryRun?: boolean;
+        fuzzyThreshold?: number;
+        fuzzy?: boolean;
+        lineEnding?: string;
+      }
+    ) => {
       const maxLines = requirePositiveInteger("max-lines", options.maxLines);
       const maxTokens = requirePositiveInteger("max-tokens", options.maxTokens);
 
@@ -105,15 +113,38 @@ export const editCommand = new Command("edit")
         lineEnding = options.lineEnding as LineEnding;
       }
 
-      const stdinRaw = readFileSync(0, "utf-8");
-      const input = parseEditInput(stdinRaw);
+      let content: string;
+      let edits: EditInput["edits"];
+      let fileName = options.fileName;
+
+      if (fileArg && options.search !== undefined && options.replace !== undefined) {
+        if (!existsSync(fileArg)) {
+          process.stderr.write(`Error: File not found: ${fileArg}\n`);
+          process.exit(1);
+        }
+        content = readFileSync(fileArg, "utf-8");
+        edits = [{ search: options.search, replace: options.replace }];
+        fileName = fileName ?? fileArg;
+      } else if (fileArg && (options.search !== undefined || options.replace !== undefined)) {
+        process.stderr.write("Error: Both --search and --replace are required when editing a file\n");
+        process.exit(1);
+      } else if (!isatty(0)) {
+        const stdinRaw = readFileSync(0, "utf-8");
+        const input = parseEditInput(stdinRaw);
+        content = input.content;
+        edits = input.edits;
+      } else {
+        process.stderr.write("Usage: air edit <file> -s \"old\" -r \"new\" [options]\n");
+        process.stderr.write('       echo \'{"content":"...","edits":[...]}\' | air edit [options]\n');
+        process.exit(1);
+      }
 
       const compressor = new EditCompressor();
-      const result = compressor.compress(input.content, {
+      const result = compressor.compress(content, {
         maxLines,
         maxTokens,
-        fileName: options.fileName,
-        edits: input.edits,
+        fileName,
+        edits,
         dryRun: options.dryRun,
         fuzzyThreshold: options.fuzzyThreshold,
         enableFuzzyMatch: options.fuzzy,
