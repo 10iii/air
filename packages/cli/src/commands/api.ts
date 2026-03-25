@@ -7,6 +7,7 @@ import { request as httpRequest } from "node:http";
 import { strictParseInt, requirePositiveInteger } from "../utils.js";
 
 const FETCH_TIMEOUT_MS = 30000;
+const MAX_REDIRECTS = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; AIR/0.1; +https://github.com/10iii/air)";
 
 function isValidUrl(str: string): boolean {
@@ -18,8 +19,13 @@ function isValidUrl(str: string): boolean {
   }
 }
 
-function fetchUrl(url: string): Promise<string> {
+function fetchUrl(url: string, redirectCount = 0): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (redirectCount > MAX_REDIRECTS) {
+      reject(new Error(`Too many redirects (max ${MAX_REDIRECTS})`));
+      return;
+    }
+
     const parsedUrl = new URL(url);
     const isHttps = parsedUrl.protocol === "https:";
     const requestFn = isHttps ? httpsRequest : httpRequest;
@@ -35,7 +41,8 @@ function fetchUrl(url: string): Promise<string> {
       },
       (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          fetchUrl(res.headers.location).then(resolve).catch(reject);
+          const redirectUrl = new URL(res.headers.location, url).href;
+          fetchUrl(redirectUrl, redirectCount + 1).then(resolve).catch(reject);
           return;
         }
         

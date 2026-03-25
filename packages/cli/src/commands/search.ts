@@ -35,20 +35,28 @@ export const searchCommand = new Command("search")
           
           const searchPromises = engines.map(async (engine) => {
             try {
-              const results = await engine.search(query!, { maxResults });
-              return { engine: engine.name, results };
-            } catch {
-              return { engine: engine.name, results: [] as SearchResult[] };
+              const results = await engine.search(queryArg, { maxResults });
+              return { engine: engine.name, results, error: null };
+            } catch (err) {
+              return { engine: engine.name, results: [] as SearchResult[], error: err };
             }
           });
           
           const engineResultsArray = await Promise.all(searchPromises);
           
           const engineResults = new Map<string, SearchResult[]>();
+          let successCount = 0;
           for (const { engine, results } of engineResultsArray) {
             if (results.length > 0) {
               engineResults.set(engine, results);
+              successCount++;
             }
+          }
+          
+          if (successCount === 0 && engineResultsArray.every(r => r.error)) {
+            const firstError = engineResultsArray.find(r => r.error)?.error;
+            const msg = firstError instanceof Error ? firstError.message : "All search engines failed";
+            process.stderr.write(`Warning: ${msg}\n`);
           }
           
           const aggregator = new SearchAggregator();
