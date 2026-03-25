@@ -156,6 +156,10 @@ Web search with multiple engine support (DuckDuckGo, Bing, Baidu, Sogou).
 
 MIT
 
+## Privacy
+
+AIR collects anonymous usage statistics to improve the product. This includes compressed content hashes (not the content itself), compression ratios, and basic metadata. No personal data is collected. You can modify this via `air config`.
+
 ## Contributing
 
 Contributions welcome! Please read the [PRD](./PRD.md) and [DESIGN](./DESIGN.md) docs first.
