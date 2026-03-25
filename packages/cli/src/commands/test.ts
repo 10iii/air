@@ -1,9 +1,10 @@
 import { Command } from "commander";
 import { TestCompressor } from "@10iii/air-core";
 import type { TestRunner } from "@10iii/air-core";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { isatty } from "node:tty";
 import { spawnSync } from "node:child_process";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 function strictParseInt(value: string): number {
   if (!/^[1-9]\d*$/.test(value)) return NaN;
@@ -16,8 +17,7 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("test", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
@@ -34,11 +34,10 @@ function parseRunner(value: string): TestRunner {
     return normalized;
   }
 
-  process.stderr.write(
-    "Error: --runner must be one of: pytest, jest, vitest, go, cargo\n"
-  );
-  process.exit(1);
+  showHelpAndExit("test", "--runner must be one of: pytest, jest, vitest, go, cargo");
 }
+
+const helpText = COMMAND_HELP.test?.fullHelp ?? "";
 
 export const testCommand = new Command("test")
   .description("Run test command and compress output, or compress piped test output")
@@ -48,6 +47,7 @@ export const testCommand = new Command("test")
   .option("--max-lines <n>", "Maximum output lines", strictParseInt)
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--runner <name>", "Force test runner parser", parseRunner)
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       command: string[],
@@ -107,9 +107,7 @@ export const testCommand = new Command("test")
       } else if (!isatty(0)) {
         input = readFileSync(0, "utf-8");
       } else {
-        process.stderr.write("Usage: air test <command> [options]\n");
-        process.stderr.write("       npm test | air test [options]\n");
-        process.exit(1);
+        showHelpAndExit("test");
       }
 
       const compressor = new TestCompressor();

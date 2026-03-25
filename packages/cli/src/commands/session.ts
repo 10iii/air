@@ -3,15 +3,17 @@ import { SessionCompressor } from "@10iii/air-core";
 import { readFileSync, existsSync } from "node:fs";
 import { isatty } from "node:tty";
 import { strictParseInt, requirePositiveInteger } from "../utils.js";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 function parseStrategy(value: string): string {
   const valid = ["time-decay", "tool-focused", "balanced"];
   if (!valid.includes(value)) {
-    process.stderr.write(`Error: --strategy must be one of: ${valid.join(", ")}\n`);
-    process.exit(1);
+    showHelpAndExit("session", `--strategy must be one of: ${valid.join(", ")}`);
   }
   return value;
 }
+
+const helpText = COMMAND_HELP.session?.fullHelp ?? "";
 
 export const sessionCommand = new Command("session")
   .description("Compress AI chat session/conversation data")
@@ -20,6 +22,7 @@ export const sessionCommand = new Command("session")
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--max-messages <n>", "Maximum messages to include", strictParseInt)
   .option("--strategy <type>", "Compression strategy (time-decay, tool-focused, balanced)", parseStrategy)
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       fileArg: string | undefined,
@@ -38,16 +41,13 @@ export const sessionCommand = new Command("session")
 
       if (fileArg) {
         if (!existsSync(fileArg)) {
-          process.stderr.write(`Error: File not found: ${fileArg}\n`);
-          process.exit(1);
+          showHelpAndExit("session", `File not found: ${fileArg}`);
         }
         content = readFileSync(fileArg, "utf-8");
       } else if (!isatty(0)) {
         content = readFileSync(0, "utf-8");
       } else {
-        process.stderr.write("Usage: air session <file> [options]\n");
-        process.stderr.write("       cat session.json | air session [options]\n");
-        process.exit(1);
+        showHelpAndExit("session");
       }
 
       const compressor = new SessionCompressor();

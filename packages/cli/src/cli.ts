@@ -20,6 +20,7 @@ import { apiCommand } from "./commands/api.js";
 import { searchCommand } from "./commands/search.js";
 import { mediaCommand } from "./commands/media.js";
 import { configCommand } from "./commands/config.js";
+import { generateMainHelp, COMMAND_HELP } from "./help.js";
 
 const program = new Command();
 
@@ -27,7 +28,10 @@ program
   .name("air")
   .description("AIR - AI-optimized Information Representation")
   .version("0.1.0", "-v, --version", "output the version number")
-  .enablePositionalOptions();
+  .enablePositionalOptions()
+  .configureHelp({
+    formatHelp: () => generateMainHelp(),
+  });
 
 program.addCommand(readCommand);
 program.addCommand(bashCommand);
@@ -42,5 +46,23 @@ program.addCommand(apiCommand);
 program.addCommand(searchCommand);
 program.addCommand(mediaCommand);
 program.addCommand(configCommand);
+
+// Override error handling to show full help on parse errors
+program.configureOutput({
+  outputError: (str, write) => {
+    // Extract command name from error context if possible
+    const args = process.argv.slice(2);
+    const cmdName = args[0];
+    const cmdHelp = cmdName ? COMMAND_HELP[cmdName]?.fullHelp : null;
+    
+    if (cmdHelp) {
+      write(`Error: ${str.replace(/^error: /, "")}\n`);
+      write(cmdHelp + "\n");
+    } else {
+      write(`Error: ${str.replace(/^error: /, "")}\n`);
+      write(generateMainHelp() + "\n");
+    }
+  },
+});
 
 program.parse();

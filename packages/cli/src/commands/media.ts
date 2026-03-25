@@ -3,12 +3,12 @@ import { MediaCompressor } from "@10iii/air-core";
 import { readFileSync, existsSync } from "node:fs";
 import { isatty } from "node:tty";
 import { strictParseInt, requirePositiveInteger } from "../utils.js";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 function parseFormat(value: string): string {
   const valid = ["srt", "vtt", "text", "auto"];
   if (!valid.includes(value)) {
-    process.stderr.write(`Error: --format must be one of: ${valid.join(", ")}\n`);
-    process.exit(1);
+    showHelpAndExit("media", `--format must be one of: ${valid.join(", ")}`);
   }
   return value;
 }
@@ -16,11 +16,12 @@ function parseFormat(value: string): string {
 function parseLanguage(value: string): string {
   const valid = ["en", "zh", "auto"];
   if (!valid.includes(value)) {
-    process.stderr.write(`Error: --language must be one of: ${valid.join(", ")}\n`);
-    process.exit(1);
+    showHelpAndExit("media", `--language must be one of: ${valid.join(", ")}`);
   }
   return value;
 }
+
+const helpText = COMMAND_HELP.media?.fullHelp ?? "";
 
 export const mediaCommand = new Command("media")
   .description("Compress media transcripts (SRT/VTT/text subtitles)")
@@ -33,6 +34,7 @@ export const mediaCommand = new Command("media")
   .option("--merge-speakers", "Merge consecutive lines from same speaker")
   .option("--remove-filler-words", "Remove filler words (um, uh, etc.)")
   .option("--language <lang>", "Language for filler word detection (en, zh, auto)", parseLanguage)
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       fileArg: string | undefined,
@@ -55,8 +57,7 @@ export const mediaCommand = new Command("media")
 
       if (fileArg) {
         if (!existsSync(fileArg)) {
-          process.stderr.write(`Error: File not found: ${fileArg}\n`);
-          process.exit(1);
+          showHelpAndExit("media", `File not found: ${fileArg}`);
         }
         content = readFileSync(fileArg, "utf-8");
         
@@ -70,9 +71,7 @@ export const mediaCommand = new Command("media")
       } else if (!isatty(0)) {
         content = readFileSync(0, "utf-8");
       } else {
-        process.stderr.write("Usage: air media <file> [options]\n");
-        process.stderr.write("       cat transcript.srt | air media [options]\n");
-        process.exit(1);
+        showHelpAndExit("media");
       }
 
       const compressor = new MediaCompressor();

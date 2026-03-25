@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { DiffCompressor } from "@10iii/air-core";
 import { readFileSync, fstatSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 /**
  * Check if stdin is a pipe (has data being piped in)
@@ -25,11 +26,12 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("diff", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
+
+const helpText = COMMAND_HELP.diff?.fullHelp ?? "";
 
 /**
  * `air diff` - Compress git diff output for AI consumption.
@@ -46,6 +48,7 @@ export const diffCommand = new Command("diff")
   .option("--max-lines <n>", "Maximum output lines", strictParseInt)
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--level <level>", "Detail level: summary, compact, or full", "compact")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       ref: string | undefined,
@@ -60,10 +63,7 @@ export const diffCommand = new Command("diff")
 
       const validLevels = ["summary", "compact", "full"];
       if (options.level && !validLevels.includes(options.level)) {
-        process.stderr.write(
-          `Error: --level must be one of: ${validLevels.join(", ")}\n`
-        );
-        process.exit(1);
+        showHelpAndExit("diff", `--level must be one of: ${validLevels.join(", ")}`);
       }
 
       let content: string;

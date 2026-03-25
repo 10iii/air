@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { LsCompressor } from "@10iii/air-core";
 import { readFileSync, fstatSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 /**
  * Check if stdin is a pipe (has data being piped in)
@@ -30,8 +31,7 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("ls", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
@@ -42,11 +42,12 @@ function requireNonnegativeInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value < 0) {
-    process.stderr.write(`Error: --${label} must be a non-negative integer\n`);
-    process.exit(1);
+    showHelpAndExit("ls", `--${label} must be a non-negative integer`);
   }
   return Math.floor(value);
 }
+
+const helpText = COMMAND_HELP.ls?.fullHelp ?? "";
 
 /**
  * `air ls` - Compress directory listing output for AI consumption.
@@ -64,6 +65,7 @@ export const lsCommand = new Command("ls")
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--max-depth <n>", "Maximum depth to display", parseNonnegativeInt)
   .option("--group-by-type", "Group files by extension")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       path: string | undefined,

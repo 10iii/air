@@ -4,6 +4,9 @@ import type { SearchResult } from "@10iii/air-core";
 import { readFileSync } from "node:fs";
 import { isatty } from "node:tty";
 import { strictParseInt, requirePositiveInteger } from "../utils.js";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
+
+const helpText = COMMAND_HELP.search?.fullHelp ?? "";
 
 export const searchCommand = new Command("search")
   .description("Search the web or compress search results")
@@ -11,6 +14,7 @@ export const searchCommand = new Command("search")
   .option("--max-lines <n>", "Maximum output lines", strictParseInt)
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--max-results <n>", "Maximum search results to include", strictParseInt)
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     async (
       queryArg: string | undefined,
@@ -71,9 +75,7 @@ export const searchCommand = new Command("search")
       } else if (!isatty(0)) {
         content = readFileSync(0, "utf-8");
       } else {
-        process.stderr.write("Usage: air search \"query\" [options]\n");
-        process.stderr.write("       cat search-results.json | air search [options]\n");
-        process.exit(1);
+        showHelpAndExit("search");
       }
 
       const compressor = new SearchCompressor();

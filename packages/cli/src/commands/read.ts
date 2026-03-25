@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { ReadCompressor } from "@10iii/air-core";
 import { readFileSync, statSync } from "node:fs";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 // R2-03: Strict positive integer parser — rejects '10foo', '1e3', etc.
 function strictParseInt(value: string): number {
@@ -14,11 +15,12 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("read", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
+
+const helpText = COMMAND_HELP.read?.fullHelp ?? "";
 
 export const readCommand = new Command("read")
   .description("Compress file content for AI consumption")
@@ -31,6 +33,7 @@ export const readCommand = new Command("read")
   .option("--no-collapse-blanks", "Don't collapse blank lines")
   .option("--mode <mode>", "Output mode: full or skeleton", "full")
   .option("--use-tree-sitter", "Use tree-sitter for skeleton mode (async, requires web-tree-sitter)")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     async (
       file: string,
@@ -51,8 +54,7 @@ export const readCommand = new Command("read")
 
       const mode = options.mode ?? "full";
       if (mode !== "full" && mode !== "skeleton") {
-        process.stderr.write(`Error: --mode must be "full" or "skeleton"\n`);
-        process.exit(1);
+        showHelpAndExit("read", '--mode must be "full" or "skeleton"');
       }
 
       if (file === "-") {

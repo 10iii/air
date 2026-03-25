@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { BashCompressor } from "@10iii/air-core";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 // R2-03: Strict positive integer parser — rejects '10foo', '1e3', etc.
 function strictParseInt(value: string): number {
@@ -15,11 +16,12 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("bash", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
+
+const helpText = COMMAND_HELP.bash?.fullHelp ?? "";
 
 /**
  * `air bash` - Compress bash/terminal output for AI consumption.
@@ -39,6 +41,7 @@ export const bashCommand = new Command("bash")
   .option("--no-collapse-blanks", "Don't collapse blank lines")
   .option("--no-collapse-repeats", "Don't collapse repeated lines")
   .option("--no-filter-noise", "Don't filter noise patterns")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       command: string[],

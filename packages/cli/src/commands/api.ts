@@ -5,6 +5,7 @@ import { isatty } from "node:tty";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { strictParseInt, requirePositiveInteger } from "../utils.js";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 const FETCH_TIMEOUT_MS = 30000;
 const MAX_REDIRECTS = 5;
@@ -67,6 +68,8 @@ function fetchUrl(url: string, redirectCount = 0): Promise<string> {
   });
 }
 
+const helpText = COMMAND_HELP.api?.fullHelp ?? "";
+
 export const apiCommand = new Command("api")
   .description("Fetch URL or compress API/JSON response data")
   .argument("[url]", "URL to fetch JSON from (if not provided, reads from stdin)")
@@ -77,6 +80,7 @@ export const apiCommand = new Command("api")
   .option("--remove-nulls", "Remove null values")
   .option("--remove-defaults", "Remove default values")
   .option("--schema-fields <fields>", "Comma-separated list of schema fields to keep")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     async (
       urlArg: string | undefined,
@@ -106,14 +110,11 @@ export const apiCommand = new Command("api")
           process.exit(1);
         }
       } else if (urlArg) {
-        process.stderr.write(`Error: Invalid URL "${urlArg}". Must be http:// or https://\n`);
-        process.exit(1);
+        showHelpAndExit("api", `Invalid URL "${urlArg}". Must be http:// or https://`);
       } else if (!isatty(0)) {
         content = readFileSync(0, "utf-8");
       } else {
-        process.stderr.write("Usage: air api <url> [options]\n");
-        process.stderr.write("       cat response.json | air api [options]\n");
-        process.exit(1);
+        showHelpAndExit("api");
       }
 
       const schemaFields = options.schemaFields

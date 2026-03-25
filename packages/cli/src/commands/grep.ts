@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { GrepCompressor } from "@10iii/air-core";
 import { readFileSync, fstatSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 /**
  * Check if stdin is a pipe (has data being piped in)
@@ -30,8 +31,7 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("grep", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
@@ -42,11 +42,12 @@ function requireNonNegativeInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value < 0) {
-    process.stderr.write(`Error: --${label} must be a non-negative integer\n`);
-    process.exit(1);
+    showHelpAndExit("grep", `--${label} must be a non-negative integer`);
   }
   return Math.floor(value);
 }
+
+const helpText = COMMAND_HELP.grep?.fullHelp ?? "";
 
 /**
  * `air grep` - Compress grep/ripgrep output for AI consumption.
@@ -66,6 +67,7 @@ export const grepCommand = new Command("grep")
   .option("--max-files <n>", "Maximum files to show", strictParseInt)
   .option("--merge-distance <n>", "Merge matches within N lines", strictParseNonNegativeInt)
   .option("--files-only", "Show only filenames and match counts")
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       pattern: string | undefined,
@@ -89,9 +91,8 @@ export const grepCommand = new Command("grep")
         // Pipe mode: read from stdin
         content = readFileSync(0, "utf-8");
       } else if (!pattern) {
-        // No pattern and no pipe - error
-        process.stderr.write("Error: pattern required for direct mode. Usage: air grep <pattern> [path]\n");
-        process.exit(1);
+        // No pattern and no pipe - show help
+        showHelpAndExit("grep");
       } else {
         // Direct mode: execute rg or grep
         const searchPath = path || ".";

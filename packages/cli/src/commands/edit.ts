@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { EditCompressor } from "@10iii/air-core";
 import { readFileSync, existsSync } from "node:fs";
 import { isatty } from "node:tty";
+import { COMMAND_HELP, showHelpAndExit } from "../help.js";
 
 function strictParseInt(value: string): number {
   if (!/^[1-9]\d*$/.test(value)) return NaN;
@@ -14,8 +15,7 @@ function requirePositiveInteger(
 ): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isFinite(value) || value <= 0) {
-    process.stderr.write(`Error: --${label} must be a positive integer\n`);
-    process.exit(1);
+    showHelpAndExit("edit", `--${label} must be a positive integer`);
   }
   return Math.floor(value);
 }
@@ -35,10 +35,7 @@ function parseEditInput(raw: string): EditInput {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    process.stderr.write(
-      'Error: stdin must be valid JSON with { "content": "...", "edits": [...] }\n'
-    );
-    process.exit(1);
+    showHelpAndExit("edit", 'stdin must be valid JSON with { "content": "...", "edits": [...] }');
   }
 
   if (
@@ -49,14 +46,13 @@ function parseEditInput(raw: string): EditInput {
     typeof (parsed as EditInput).content !== "string" ||
     !Array.isArray((parsed as EditInput).edits)
   ) {
-    process.stderr.write(
-      'Error: JSON must have { "content": string, "edits": Array<{ search, replace }> }\n'
-    );
-    process.exit(1);
+    showHelpAndExit("edit", 'JSON must have { "content": string, "edits": Array<{ search, replace }> }');
   }
 
   return parsed as EditInput;
 }
+
+const helpText = COMMAND_HELP.edit?.fullHelp ?? "";
 
 export const editCommand = new Command("edit")
   .description(
@@ -79,6 +75,7 @@ export const editCommand = new Command("edit")
     "--line-ending <mode>",
     'Line ending mode: "auto" (preserve original), "lf", "preserve"',
   )
+  .configureHelp({ formatHelp: () => helpText })
   .action(
     (
       fileArg: string | undefined,
@@ -98,8 +95,7 @@ export const editCommand = new Command("edit")
       const maxTokens = requirePositiveInteger("max-tokens", options.maxTokens);
 
       if (options.fuzzyThreshold !== undefined && (options.fuzzyThreshold < 0 || options.fuzzyThreshold > 1)) {
-        process.stderr.write("Error: --fuzzy-threshold must be between 0 and 1\n");
-        process.exit(1);
+        showHelpAndExit("edit", "--fuzzy-threshold must be between 0 and 1");
       }
 
       const validLineEndings = ["auto", "preserve", "lf"] as const;
@@ -107,8 +103,7 @@ export const editCommand = new Command("edit")
       let lineEnding: LineEnding | undefined;
       if (options.lineEnding !== undefined) {
         if (!validLineEndings.includes(options.lineEnding as LineEnding)) {
-          process.stderr.write(`Error: --line-ending must be one of: ${validLineEndings.join(", ")}\n`);
-          process.exit(1);
+          showHelpAndExit("edit", `--line-ending must be one of: ${validLineEndings.join(", ")}`);
         }
         lineEnding = options.lineEnding as LineEnding;
       }
@@ -119,29 +114,23 @@ export const editCommand = new Command("edit")
 
       if (fileArg && options.search !== undefined && options.replace !== undefined) {
         if (!existsSync(fileArg)) {
-          process.stderr.write(`Error: File not found: ${fileArg}\n`);
-          process.exit(1);
+          showHelpAndExit("edit", `File not found: ${fileArg}`);
         }
         content = readFileSync(fileArg, "utf-8");
         edits = [{ search: options.search, replace: options.replace }];
         fileName = fileName ?? fileArg;
       } else if (fileArg && (options.search !== undefined || options.replace !== undefined)) {
-        process.stderr.write("Error: Both --search and --replace are required when editing a file\n");
-        process.exit(1);
+        showHelpAndExit("edit", "Both --search and --replace are required when editing a file");
       } else if (fileArg) {
         // File argument provided but no --search/--replace
-        process.stderr.write("Error: When editing a file directly, --search and --replace are required\n");
-        process.stderr.write("Usage: air edit <file> -s \"old\" -r \"new\" [options]\n");
-        process.exit(1);
+        showHelpAndExit("edit", "When editing a file directly, --search and --replace are required");
       } else if (!isatty(0)) {
         const stdinRaw = readFileSync(0, "utf-8");
         const input = parseEditInput(stdinRaw);
         content = input.content;
         edits = input.edits;
       } else {
-        process.stderr.write("Usage: air edit <file> -s \"old\" -r \"new\" [options]\n");
-        process.stderr.write('       echo \'{"content":"...","edits":[...]}\' | air edit [options]\n');
-        process.exit(1);
+        showHelpAndExit("edit");
       }
 
       const compressor = new EditCompressor();
