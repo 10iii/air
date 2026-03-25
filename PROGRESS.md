@@ -1,6 +1,6 @@
 # AIR Project Progress
 
-> Last updated: 2026-03-21 (P1-6 tree-sitter WASM integration)
+> Last updated: 2026-03-25 (P1 direct call mode complete)
 
 ## Phase 1: Core Compressors (Complete)
 
@@ -138,21 +138,81 @@ packages/
 
 ---
 
-## Remaining Work
+## Phase 2B: Search Engine Implementation (Complete)
 
-### Search Engine HTML Parsing (Next)
-- Engine classes are stubs (throw "Not implemented") — need real implementations
-- Baidu: hidden JSON API (`tn=json`), returns structured `data.feed.entry[]`
-- Bing: HTML parsing with base64 URL decode (`/ck/a?u=a1XXX`)
-- Sogou: HTML parsing with xpath selectors (`.rb/.vrwrap`)
-- DuckDuckGo: `duck-duck-scrape` npm package (blocked in China)
-- 360 Search: listed as proposal for further discussion (requires Cookie pre-fetch)
-- No API keys required — client-side HTML scraping only
+**Status**: ✅ Complete (2026-03-17)
+**Tests**: 55 passing (engines.test.ts)
+
+| Engine | Status | Implementation |
+|---|---|---|
+| Baidu | ✅ | JSON API (`tn=json`) + HTML fallback |
+| Bing | ✅ | HTML scraping + base64 URL decode |
+| Sogou | ✅ | HTML scraping (`.rb/.vrwrap`) |
+| DuckDuckGo | ✅ | `duck-duck-scrape` (optional dep, blocked in China) |
+
+Features:
+- CAPTCHA detection (Baidu/Sogou redirect to captcha pages)
+- Timeout handling (10s)
+- Region-based engine selection (`getEnginesForRegion()`)
+
+---
+
+## Phase 2C: Direct Call Mode (Complete)
+
+**Status**: ✅ Complete (2026-03-25)
+**Tests**: 924 passing (18 suites)
+
+Direct call mode allows executing commands without pipes:
+
+### P0 (Core, commit `6ed97b4`)
+
+| Command | Before | After |
+|---|---|---|
+| `air bash` | `air bash -- ls -la` | `air bash ls -la` |
+| `air grep` | `rg pattern \| air grep` | `air grep "pattern" src/` |
+| `air ls` | `ls -la \| air ls` | `air ls src/ --max-depth 3` |
+| `air diff` | `git diff \| air diff` | `air diff HEAD~3` |
+
+### P1 (Web/API/Search, 2026-03-25)
+
+| Command | Before | After |
+|---|---|---|
+| `air web` | `curl url \| air web` | `air web https://example.com` |
+| `air api` | `curl api \| air api` | `air api https://api.example.com/data` |
+| `air search` | `cat results.json \| air search` | `air search "query"` |
+
+Features:
+- `air web`: Built-in HTTP/HTTPS fetch with redirect following
+- `air api`: Built-in fetch for JSON APIs
+- `air search`: Real search execution via configured engines (Baidu/Bing/Sogou/DDG + AIR Facts)
+
+### P2 (Remaining, low priority)
+
+| Command | Status | Notes |
+|---|---|---|
+| `air test` | ❌ Pipe only | Would need command execution |
+| `air edit` | ⚠️ JSON stdin | Would need file path + search/replace params |
+| `air media` | ❌ Pipe only | Would need file reading |
+| `air session` | ❌ JSON stdin | Would need file reading |
+
+---
+
+## Remaining Work
 
 ### air-context (OC-Only)
 - Formalized as OpenCode-only plugin, NOT cross-framework
 - Reason: other frameworks may not expose APIs; context management is sensitive and could cause "efficiency degradation/agent crash/task failure" if poorly adapted
 
-### Region Detection Improvements (Planned)
-- Current: Google ping (2s timeout) at install time
-- Need: additional fallback conditions beyond Google ping
+### Region Detection (Complete)
+- **Status**: ✅ Complete (2026-03-22)
+- **Location**: `packages/core/src/config/region.ts` (260 lines)
+- Detection priority (highest to lowest):
+  1. Environment variable `AIR_REGION=china|global`
+  2. Config file `~/.air/config.json → region`
+  3. Auto-detection (multi-signal voting):
+     - Locale zh_CN → +1 china
+     - Timezone Asia/Shanghai/Chongqing → +1 china
+     - DNS google.com failure → +2 china (weighted)
+     - HTTP google.com/generate_204 unreachable → +2 china (weighted)
+- Exported APIs: `getRegion()`, `getRegionSync()`, `detectRegion()`, `setRegion()`, `getEnginesForRegion()`
+- Session caching + auto-persist to config

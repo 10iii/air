@@ -356,7 +356,7 @@ describe("air --help", () => {
 
   it("should display web subcommand help", () => {
     const { stdout } = run(["web", "--help"]);
-    expect(stdout).toContain("--url");
+    expect(stdout).toContain("url");
     expect(stdout).toContain("--max-lines");
     expect(stdout).toContain("--max-tokens");
     expect(stdout).toContain("--format");

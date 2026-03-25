@@ -35,8 +35,12 @@ export type { MediaOptions } from "./compressors/media.js";
 export { SearchAggregator } from "./search/aggregator.js";
 export type { SearchResult, AggregatedResult, AggregatorOptions } from "./search/aggregator.js";
 export type { SearchEngine, EngineSearchOptions } from "./search/engines.js";
-export { BaiduEngine, BingEngine, DuckDuckGoEngine, SogouEngine, getEnginesForRegion } from "./search/engines.js";
+export { BaiduEngine, BingEngine, DuckDuckGoEngine, SogouEngine, AirFactsEngine, getEnginesForRegion, getEngines } from "./search/engines.js";
 export { stripAnsiCodes, isErrorLine, isWarningLine, isNoiseLine } from "./compressors/bash.js";
 export { detectLanguage, isLineComment, isImportLine } from "./parsers/file.js";
 export type { LanguageInfo } from "./parsers/file.js";
 export { estimateTokens, collapseBlanks } from "./utils/index.js";
+
+export { TelemetryClient, hashContent, isTelemetryEnabled } from "./telemetry/index.js";
+export { getTelemetryConfig, setTelemetryEnabled } from "./telemetry/config.js";
+export type { TelemetryConfig, TelemetryPayload } from "./telemetry/types.js";
