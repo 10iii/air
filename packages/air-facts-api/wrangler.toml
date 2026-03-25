@@ -1,0 +1,48 @@
+name = "air-facts-api"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+# 开发环境
+[env.dev]
+name = "air-facts-api-dev"
+vars = { ENVIRONMENT = "development" }
+
+# 生产环境
+[env.production]
+name = "air-facts-api"
+vars = { ENVIRONMENT = "production" }
+routes = [
+  { pattern = "facts.airgo.dev/*", zone_name = "airgo.dev" }
+]
+
+# KV 绑定（去重索引）
+[[kv_namespaces]]
+binding = "DEDUP_KV"
+id = "b02a37aa198448aab4170f80e37e69a7"
+preview_id = "e811230de0f74929bb6d6f64837c322b"
+
+# R2 绑定（存储）
+[[r2_buckets]]
+binding = "FACTS_R2"
+bucket_name = "air-facts"
+preview_bucket_name = "air-facts-preview"
+
+# Queue 绑定（批量处理）
+[[queues.producers]]
+binding = "FACTS_QUEUE"
+queue = "air-facts-extract"
+
+[[queues.consumers]]
+queue = "air-facts-extract"
+max_batch_size = 10
+max_batch_timeout = 30
+
+# AI 绑定（Workers AI）
+[ai]
+binding = "AI"
+
+# Vectorize 绑定（向量搜索）
+[[vectorize]]
+binding = "FACTS_INDEX"
+index_name = "air-facts-index"
