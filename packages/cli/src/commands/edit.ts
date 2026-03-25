@@ -128,6 +128,11 @@ export const editCommand = new Command("edit")
       } else if (fileArg && (options.search !== undefined || options.replace !== undefined)) {
         process.stderr.write("Error: Both --search and --replace are required when editing a file\n");
         process.exit(1);
+      } else if (fileArg) {
+        // File argument provided but no --search/--replace
+        process.stderr.write("Error: When editing a file directly, --search and --replace are required\n");
+        process.stderr.write("Usage: air edit <file> -s \"old\" -r \"new\" [options]\n");
+        process.exit(1);
       } else if (!isatty(0)) {
         const stdinRaw = readFileSync(0, "utf-8");
         const input = parseEditInput(stdinRaw);
