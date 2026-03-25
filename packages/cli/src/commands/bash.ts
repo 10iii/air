@@ -31,6 +31,8 @@ function requirePositiveInteger(
 export const bashCommand = new Command("bash")
   .description("Compress bash/terminal output for AI consumption")
   .argument("[command...]", "Command to execute and compress output")
+  .allowUnknownOption()
+  .passThroughOptions()
   .option("--max-lines <n>", "Maximum output lines", strictParseInt)
   .option("--max-tokens <n>", "Maximum output tokens (approximate)", strictParseInt)
   .option("--no-strip-ansi", "Don't strip ANSI escape codes")

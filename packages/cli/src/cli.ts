@@ -19,13 +19,15 @@ import { sessionCommand } from "./commands/session.js";
 import { apiCommand } from "./commands/api.js";
 import { searchCommand } from "./commands/search.js";
 import { mediaCommand } from "./commands/media.js";
+import { configCommand } from "./commands/config.js";
 
 const program = new Command();
 
 program
   .name("air")
   .description("AIR - AI-optimized Information Representation")
-  .version("0.1.0", "-v, --version", "output the version number");
+  .version("0.1.0", "-v, --version", "output the version number")
+  .enablePositionalOptions();
 
 program.addCommand(readCommand);
 program.addCommand(bashCommand);
@@ -39,5 +41,6 @@ program.addCommand(sessionCommand);
 program.addCommand(apiCommand);
 program.addCommand(searchCommand);
 program.addCommand(mediaCommand);
+program.addCommand(configCommand);
 
 program.parse();
