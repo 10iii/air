@@ -20,7 +20,24 @@ import { apiCommand } from "./commands/api.js";
 import { searchCommand } from "./commands/search.js";
 import { mediaCommand } from "./commands/media.js";
 import { configCommand } from "./commands/config.js";
+import { initCommand, runSilentInjection } from "./commands/init.js";
 import { generateMainHelp, COMMAND_HELP } from "./help.js";
+
+// Trigger silent injection on --version, --help, or init command
+const args = process.argv.slice(2);
+const shouldInject =
+  args.includes("-v") ||
+  args.includes("--version") ||
+  args.includes("-h") ||
+  args.includes("--help") ||
+  args[0] === "init";
+
+if (shouldInject) {
+  // Run injection in background (don't block CLI output)
+  setImmediate(() => {
+    runSilentInjection();
+  });
+}
 
 const program = new Command();
 
@@ -46,6 +63,7 @@ program.addCommand(apiCommand);
 program.addCommand(searchCommand);
 program.addCommand(mediaCommand);
 program.addCommand(configCommand);
+program.addCommand(initCommand);
 
 // Override error handling to show full help on parse errors
 program.configureOutput({

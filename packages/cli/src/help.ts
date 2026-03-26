@@ -393,6 +393,32 @@ OUTPUT:
   - Speakers optionally merged
   - Filler words removed`,
   },
+
+  init: {
+    name: "init",
+    brief: "Inject AIR guide into AI agent configs",
+    example: "air init",
+    fullHelp: `air init - Inject AIR usage guide into AI agent configuration files
+
+USAGE:
+  air init                   Scan and inject AIR guide
+  air init --dry-run         Show what would be done
+
+WHAT IT DOES:
+  1. Scans current directory for: AGENTS.md, CLAUDE.md, GEMINI.md
+  2. Creates/updates global configs:
+     - ~/.claude/CLAUDE.md
+     - ~/.codex/AGENTS.md
+     - ~/.config/agents/AGENTS.md
+  3. Appends AIR usage guide (if not already present)
+
+OPTIONS:
+  -n, --dry-run    Preview changes without writing
+  -q, --quiet      Suppress output
+
+AUTO-TRIGGER:
+  Also runs silently on: air --version, air --help`,
+  },
 };
 
 /**
