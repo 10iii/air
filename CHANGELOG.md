@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-26
+
 ### Added
 - `air init` command to inject AIR usage guide into AI agent configuration files
 - MCP Registry server.json and automated publish workflow
@@ -16,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Help output optimized for AI consumption (structured, minimal)
+
+### Fixed
+- MCP Registry server.json updated to schema 2025-12-11 (camelCase fields)
 
 ## [0.1.1] - 2026-03-24
 
@@ -40,5 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `air-media` - Media transcript compression
 - `air-search` - Web search aggregation
 
-[Unreleased]: https://github.com/10iii/air/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/10iii/air/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/10iii/air/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/10iii/air/releases/tag/v0.1.1
