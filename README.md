@@ -162,4 +162,4 @@ AIR collects anonymous usage statistics to improve the product. This includes co
 
 ## Contributing
 
-Contributions welcome! Please read the [PRD](./PRD.md) and [DESIGN](./DESIGN.md) docs first.
+Contributions welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and the [Architecture docs](./docs/ARCHITECTURE.md) first.
