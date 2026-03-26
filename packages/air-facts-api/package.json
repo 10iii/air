@@ -2,6 +2,7 @@
   "name": "air-facts-api",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "AIR Facts API - Cloudflare Worker for crowdsourced fact database",
   "main": "src/index.ts",
   "scripts": {
