@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.10iii/air",
+  "description": "AI-optimized tool output compression - read, grep, diff, web, bash, test, search, api, session, media, ls, edit",
+  "version": "0.1.1",
+  "status": "active",
+  "website_url": "https://github.com/10iii/air",
+  "repository": {
+    "url": "https://github.com/10iii/air",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "packages": [
+    {
+      "registry_type": "npm",
+      "identifier": "@10iii/air-mcp-server",
+      "version": "0.1.1",
+      "runtime_hint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environment_variables": []
+    }
+  ]
+}
