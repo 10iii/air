@@ -1,8 +1,10 @@
 name: Publish to MCP Registry
 
 on:
-  release:
-    types: [published]
+  # Trigger after npm publish workflow completes successfully
+  workflow_run:
+    workflows: ["Publish to npm"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -13,6 +15,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Only run if npm workflow succeeded (for workflow_run trigger)
+    # or always run for manual dispatch
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -34,5 +39,5 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        if: ${{ github.event_name == 'release' || !inputs.dry_run }}
+        if: ${{ github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
         run: ./mcp-publisher publish packages/mcp-server/server.json
