@@ -1,6 +1,6 @@
 {
   "name": "@10iii/air-mcp-server",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "mcpName": "io.github.10iii/air",
   "description": "MCP server for AIR - AI-optimized tool output compression",
   "type": "module",
