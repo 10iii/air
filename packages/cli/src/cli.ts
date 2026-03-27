@@ -7,6 +7,7 @@
  */
 
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { readCommand } from "./commands/read.js";
 import { bashCommand } from "./commands/bash.js";
 import { grepCommand } from "./commands/grep.js";
@@ -22,6 +23,11 @@ import { mediaCommand } from "./commands/media.js";
 import { configCommand } from "./commands/config.js";
 import { initCommand, runSilentInjection } from "./commands/init.js";
 import { generateMainHelp, COMMAND_HELP } from "./help.js";
+
+// Read version from package.json at runtime
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json") as { version: string };
+const VERSION = pkg.version;
 
 // Trigger silent injection on --version, --help, or init command
 const args = process.argv.slice(2);
@@ -44,7 +50,7 @@ const program = new Command();
 program
   .name("air")
   .description("AIR - AI-optimized Information Representation")
-  .version("0.1.0", "-v, --version", "output the version number")
+  .version(VERSION, "-v, --version", "output the version number")
   .enablePositionalOptions()
   .configureHelp({
     formatHelp: () => generateMainHelp(),
