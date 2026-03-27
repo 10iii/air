@@ -29,14 +29,10 @@ const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
 const VERSION = pkg.version;
 
-// Trigger silent injection on --version, --help, or init command
+// ONLY trigger silent injection on "init" command (not --version or --help)
+// Rationale: --version and --help should be side-effect-free
 const args = process.argv.slice(2);
-const shouldInject =
-  args.includes("-v") ||
-  args.includes("--version") ||
-  args.includes("-h") ||
-  args.includes("--help") ||
-  args[0] === "init";
+const shouldInject = args[0] === "init";
 
 if (shouldInject) {
   // Run injection in background (don't block CLI output)
