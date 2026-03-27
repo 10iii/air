@@ -425,8 +425,25 @@ export async function startServer(): Promise<void> {
 }
 
 function isMainModule(): boolean {
+  // When run via npx, argv[1] might not match import.meta.url exactly
+  // Check if this file is being run as the entry point
   if (!process.argv[1]) return false;
-  return import.meta.url === pathToFileURL(process.argv[1]).href;
+  
+  const thisUrl = import.meta.url;
+  const argvUrl = pathToFileURL(process.argv[1]).href;
+  
+  // Direct match
+  if (thisUrl === argvUrl) return true;
+  
+  // Check if argv[1] points to our package's bin script
+  // (npx creates a wrapper that calls our dist/index.js)
+  if (process.argv[1].includes("air-mcp-server") || 
+      process.argv[1].includes("air-mcp") ||
+      process.argv[1].endsWith("/dist/index.js")) {
+    return true;
+  }
+  
+  return false;
 }
 
 if (isMainModule()) {
