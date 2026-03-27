@@ -1,6 +1,6 @@
 {
   "name": "@10iii/air",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "CLI for AI-optimized Information Representation - compress tool outputs for AI consumption",
   "type": "module",
   "license": "MIT",

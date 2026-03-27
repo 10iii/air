@@ -1,6 +1,6 @@
 {
   "name": "@10iii/air-core",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Core compression library for AI-optimized tool outputs",
   "type": "module",
   "main": "dist/index.js",
@@ -26,6 +26,7 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
     }
   },
