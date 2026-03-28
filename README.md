@@ -100,17 +100,8 @@ Directory listing with tree structure and smart filtering.
 ### air-diff
 Diff output compression with hunk summarization.
 
-### air-edit
-Direct file editing without pre-reading (search/replace).
-
-### air-session
-Session/conversation history compression.
-
 ### air-api
 API response compression (JSON field filtering).
-
-### air-media
-Media file metadata extraction (images, audio, video).
 
 ### air-search
 Web search with multiple engine support (DuckDuckGo, Bing, Baidu, Sogou).

@@ -78,22 +78,26 @@ features:
   - id: F008
     title: Edit Compressor
     summary: 文件编辑辅助，search/replace 模式，支持模糊匹配
-    impl: [core/src/compressors/edit.ts#EditCompressor]
+    impl: [archived/core-compressors/edit.ts#EditCompressor]
     tests: [core/src/__tests__/edit.test.ts]
     depends: []
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   - id: F009
     title: Session Compressor
     summary: 会话历史压缩，支持 time-decay/tool-focused/balanced 策略
-    impl: [core/src/compressors/session.ts#SessionCompressor]
+    impl: [archived/core-compressors/session.ts#SessionCompressor]
     tests: [core/src/__tests__/session.test.ts]
     depends: []
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   - id: F010
     title: API Compressor
@@ -118,12 +122,14 @@ features:
   - id: F012
     title: Media Compressor
     summary: 媒体文件元数据提取和转写压缩（SRT/VTT/text 字幕）
-    impl: [core/src/compressors/media.ts#MediaCompressor]
+    impl: [archived/core-compressors/media.ts#MediaCompressor]
     tests: [core/src/__tests__/media.test.ts]
     depends: []
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   # --- Search ---
   - id: F020
@@ -335,22 +341,26 @@ features:
   - id: F108
     title: CLI Edit Command
     summary: air edit 命令实现
-    impl: [cli/src/commands/edit.ts]
+    impl: [archived/cli-commands/edit.ts]
     tests: [cli/src/__tests__/e2e.test.ts]
     depends: [F008, F100]
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   - id: F109
     title: CLI Session Command
     summary: air session 命令实现
-    impl: [cli/src/commands/session.ts]
+    impl: [archived/cli-commands/session.ts]
     tests: [cli/src/__tests__/e2e.test.ts]
     depends: [F009, F100]
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   - id: F110
     title: CLI API Command
@@ -375,12 +385,14 @@ features:
   - id: F112
     title: CLI Media Command
     summary: air media 命令实现
-    impl: [cli/src/commands/media.ts]
+    impl: [archived/cli-commands/media.ts]
     tests: [cli/src/__tests__/e2e.test.ts]
     depends: [F012, F100]
     designed_at: 2026-03-14T00:00:00Z
     implemented_at: 2026-03-16T00:00:00Z
     tested_at: 2026-03-16T00:00:00Z
+    deprecated_at: 2026-03-28T00:00:00Z
+    deprecated_reason: Low usage, moved to archived/
 
   - id: F113
     title: CLI Config Command
