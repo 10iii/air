@@ -148,103 +148,80 @@ Where `{ratio}` = `((original - compressed) / original) * 100`, rounded to integ
 
 ## Compressor Routing
 
-The hook automatically selects the appropriate compressor based on tool name.
+Both OpenCode and OpenClaw plugins use a **whitelist strategy** - only explicitly listed tools are compressed. All other tools pass through unchanged.
+
+### Why Whitelist?
+
+| Strategy | Pros | Cons |
+|----------|------|------|
+| **Blacklist** | Covers new tools automatically | Risk of corrupting unknown tools |
+| **Whitelist** | Safe - only compress verified tools | Manual addition for new tools |
+
+**Decision**: Whitelist is safer. Missing a tool just means raw output (user can still see it). Wrong compression could corrupt critical data.
 
 ### OpenCode Tools → AIR Compressors
 
-| OpenCode Tool | Description | AIR Compressor | Notes |
-|---------------|-------------|----------------|-------|
-| `bash` | Execute shell commands | BashCompressor | Terminal output, error messages |
-| `read` | Read file contents | ReadCompressor | Supports skeleton mode for large files |
-| `grep` | Search file contents (regex) | GrepCompressor | Code search results |
-| `glob` | Find files by pattern | LsCompressor | File paths list |
-| `list` | List directory contents | LsCompressor | Directory tree |
-| `webfetch` | Fetch web content | WebCompressor | HTML → Markdown extraction |
-| `websearch` | Search the web (Exa AI) | SearchCompressor | Search results aggregation |
-| `edit` | Modify files | — | No compression (small confirmation) |
-| `write` | Create/overwrite files | — | No compression (small confirmation) |
-| `patch` | Apply patches | — | No compression (small confirmation) |
-| `lsp` | LSP code intelligence | ApiCompressor | JSON structured data |
-| `skill` | Load skill files | ReadCompressor | Markdown content |
-| `todowrite` | Manage todo lists | — | No compression (small output) |
-| `question` | Ask user questions | — | No compression (interactive) |
+**Whitelist**: Only these tools are compressed:
+
+| OpenCode Tool | AIR Compressor | Notes |
+|---------------|----------------|-------|
+| `bash` | BashCompressor | Terminal output, error messages |
+| `read` | ReadCompressor | File content with line numbers |
+| `skill` | ReadCompressor | Skill file content |
+| `grep` | GrepCompressor | Code search results |
+| `glob` | LsCompressor | File paths list |
+| `webfetch` | WebCompressor | HTML → Markdown (via before-hook) |
+| `websearch_web_search_exa` | SearchCompressor | Exa search results |
+
+**Not compressed** (all other tools): `edit`, `write`, `patch`, `question`, `todowrite`, `task`, `context_stats`, `context_slim`, etc.
 
 ### OpenClaw Tools → AIR Compressors
 
-| OpenClaw Tool | Description | AIR Compressor | Notes |
-|---------------|-------------|----------------|-------|
-| `exec` / `process` | Run shell commands | BashCompressor | Terminal output, process management |
-| `read` | Read file contents | ReadCompressor | File I/O |
-| `write` / `edit` | File modifications | — | No compression (small confirmation) |
-| `apply_patch` | Multi-hunk patches | — | No compression (small confirmation) |
-| `browser` | Chromium control | WebCompressor | Page snapshots, DOM content |
-| `web_search` | Web search | SearchCompressor | Search results |
-| `web_fetch` | Fetch page content | WebCompressor | HTML → Markdown |
-| `canvas` | Node Canvas control | — | No compression (UI commands) |
-| `nodes` | Device discovery | ApiCompressor | JSON device list |
-| `cron` / `gateway` | Scheduled jobs | ApiCompressor | JSON config/status |
-| `image` / `image_generate` | Image analysis/gen | — | No compression (binary/URL) |
-| `sessions_list` | List active sessions | ApiCompressor | JSON session data |
-| `sessions_history` | Fetch transcripts | — | **No compression** (high risk of losing critical context) |
-| `sessions_send` | Cross-session messaging | — | No compression (small output) |
-| `message` | Send channel messages | — | No compression (small confirmation) |
-| `memory_search` / `memory_get` | Memory retrieval | ApiCompressor | JSON memory entries |
+**Whitelist**: Only 5 tools are compressed:
 
-### Routing Logic
+| OpenClaw Tool | AIR Compressor | Notes |
+|---------------|----------------|-------|
+| `exec` / `process` | BashCompressor | Terminal output |
+| `read` | ReadCompressor | File content |
+| `browser` | WebCompressor | Page snapshots, DOM |
+| `web_search` | SearchCompressor | Search results |
+| `web_fetch` | WebCompressor | HTML → Markdown |
+
+**Not compressed** (all other tools): `write`, `edit`, `apply_patch`, `canvas`, `nodes`, `cron`, `gateway`, `image`, `sessions_*`, `message`, `memory_*`, etc.
+
+### Routing Logic (Whitelist)
 
 ```typescript
-function selectCompressor(toolName: string): Compressor {
+// Whitelist map: tool name → compressor factory
+const TOOL_COMPRESSOR_MAP: Record<string, () => Compressor> = {
+  // OpenCode tools
+  bash: () => new BashCompressor(),
+  read: () => new ReadCompressor(),
+  skill: () => new ReadCompressor(),
+  grep: () => new GrepCompressor(),
+  glob: () => new LsCompressor(),
+  webfetch: () => new WebCompressor(),
+  websearch_web_search_exa: () => new SearchCompressor(),
+  
+  // OpenClaw tools (if different names)
+  exec: () => new BashCompressor(),
+  process: () => new BashCompressor(),
+  browser: () => new WebCompressor(),
+  web_search: () => new SearchCompressor(),
+  web_fetch: () => new WebCompressor(),
+};
+
+function selectCompressor(toolName: string): Compressor | null {
   const name = toolName.toLowerCase();
   
-  // Terminal/command output
-  if (name.includes("bash") || name.includes("shell") || 
-      name.includes("exec") || name.includes("process")) {
-    return new BashCompressor();
+  // Skip control tools
+  if (name === "air_on" || name === "air_off") {
+    return null;
   }
   
-  // File content
-  if (name.includes("read") || name.includes("cat") || 
-      name.includes("file") || name.includes("skill")) {
-    return new ReadCompressor();
-  }
-  
-  // Code search
-  if (name.includes("grep")) {
-    return new GrepCompressor();
-  }
-  
-  // Directory listings
-  if (name.includes("glob") || name.includes("list") || 
-      name.includes("ls") || name.includes("dir")) {
-    return new LsCompressor();
-  }
-  
-  // Web content
-  if (name.includes("webfetch") || name.includes("web_fetch") || 
-      name.includes("fetch") || name.includes("curl") ||
-      name.includes("browser")) {
-    return new WebCompressor();
-  }
-  
-  // Search results
-  if (name.includes("search")) {
-    return new SearchCompressor();
-  }
-  
-  // Git diffs
-  if (name.includes("diff")) {
-    return new DiffCompressor();
-  }
-  
-  // Session history - DO NOT COMPRESS (high risk)
-  // sessions_history is used for cross-session collaboration
-  // Compression may cause misunderstanding of other agent's state
-  if (name.includes("sessions_history") || name.includes("history")) {
-    return null; // Skip compression
-  }
-  
-  // Default: JSON/structured data
-  return new ApiCompressor();
+  // Exact match in whitelist
+  const factory = TOOL_COMPRESSOR_MAP[name];
+  return factory ? factory() : null;  // Not in whitelist → don't compress
 }
 ```
 
@@ -847,3 +824,4 @@ Key points:
 - [AIR Core Documentation](../README.md)
 - [OpenCode Plugin API](https://opencode.ai/docs/plugins/)
 - [OpenClaw Plugin Types](https://github.com/openclaw/openclaw/blob/main/src/plugins/types.ts)
+- [OpenClaw Plugin Design](./OPENCLAW-PLUGIN-DESIGN.md) - Detailed design and implementation plan

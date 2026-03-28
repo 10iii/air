@@ -80,105 +80,63 @@ function getCompressor(name: string): CompressorLike {
 }
 
 // =============================================================================
-// Compressor routing
+// Compressor routing (Whitelist strategy)
 // =============================================================================
 
 /**
+ * Whitelist of tools to compress.
+ * Only tools explicitly listed here will be compressed.
+ * All other tools pass through unchanged.
+ *
+ * Design rationale: Safer than blacklist - only compress verified tools.
+ * Missing a tool just means raw output (user can still see it).
+ * Wrong compression could corrupt critical data.
+ */
+type CompressorFactory = () => CompressorLike;
+
+const TOOL_COMPRESSOR_MAP: Record<string, CompressorFactory> = {
+  // Terminal/command output → BashCompressor
+  bash: () => getCompressor("BashCompressor"),
+
+  // File content → ReadCompressor
+  read: () => getCompressor("ReadCompressor"),
+  skill: () => getCompressor("ReadCompressor"),
+
+  // Code search → GrepCompressor
+  grep: () => getCompressor("GrepCompressor"),
+
+  // Directory listings → LsCompressor
+  glob: () => getCompressor("LsCompressor"),
+
+  // Web content → WebCompressor (webfetch handled by before-hook)
+  webfetch: () => getCompressor("WebCompressor"),
+
+  // Search results → SearchCompressor
+  websearch_web_search_exa: () => getCompressor("SearchCompressor"),
+
+  // Git diffs → DiffCompressor (only explicit "diff" tool, not file names containing "diff")
+  // Note: Not included by default - git diff output via bash is handled by BashCompressor
+};
+
+/**
  * Select appropriate compressor based on tool name.
- * Returns null for tools that should not be compressed.
+ * Returns null for tools not in whitelist (safe default).
  */
 function selectCompressor(toolName: string): CompressorLike | null {
   const name = toolName.toLowerCase();
 
-  // Tools that should NOT be compressed
-  if (
-    name === "air_on" ||
-    name === "air_off" ||
-    name.includes("edit") ||
-    name.includes("write") ||
-    name.includes("patch") ||
-    name.includes("question") ||
-    name.includes("todowrite") ||
-    name.includes("message") ||
-    name.includes("sessions_send") ||
-    name.includes("sessions_history") || // High risk - critical context
-    name.includes("canvas") ||
-    name.includes("image")
-  ) {
+  // Skip control tools
+  if (name === "air_on" || name === "air_off") {
     return null;
   }
 
-  // Terminal/command output
-  if (
-    name.includes("bash") ||
-    name.includes("shell") ||
-    name.includes("exec") ||
-    name.includes("process")
-  ) {
-    return getCompressor("BashCompressor");
+  // Exact match in whitelist
+  const factory = TOOL_COMPRESSOR_MAP[name];
+  if (factory) {
+    return factory();
   }
 
-  // File content
-  if (
-    name.includes("read") ||
-    name.includes("cat") ||
-    name.includes("file") ||
-    name.includes("skill")
-  ) {
-    return getCompressor("ReadCompressor");
-  }
-
-  // Code search
-  if (name.includes("grep")) {
-    return getCompressor("GrepCompressor");
-  }
-
-  // Directory listings
-  if (
-    name.includes("glob") ||
-    name.includes("list") ||
-    name.includes("ls") ||
-    name.includes("dir")
-  ) {
-    return getCompressor("LsCompressor");
-  }
-
-  // Web content (handled by before-hook for webfetch, but also covers browser)
-  if (
-    name.includes("webfetch") ||
-    name.includes("web_fetch") ||
-    name.includes("fetch") ||
-    name.includes("curl") ||
-    name.includes("browser")
-  ) {
-    return getCompressor("WebCompressor");
-  }
-
-  // Search results
-  if (name.includes("search")) {
-    return getCompressor("SearchCompressor");
-  }
-
-  // Git diffs
-  if (name.includes("diff")) {
-    return getCompressor("DiffCompressor");
-  }
-
-  // Default: try API compressor for JSON-like outputs
-  // But return null if we're not sure - better to not compress than corrupt
-  if (
-    name.includes("api") ||
-    name.includes("json") ||
-    name.includes("nodes") ||
-    name.includes("cron") ||
-    name.includes("gateway") ||
-    name.includes("sessions_list") ||
-    name.includes("memory")
-  ) {
-    return getCompressor("ApiCompressor");
-  }
-
-  // Unknown tools - don't compress
+  // Not in whitelist - don't compress
   return null;
 }
 
@@ -256,6 +214,9 @@ async function interceptWebfetch(
         break;
       }
     }
+
+    // Flush remaining bytes from decoder
+    content += decoder.decode();
 
     // Compress immediately
     const compressor = getCompressor("WebCompressor");
@@ -368,8 +329,9 @@ const AirPlugin: Plugin = async () => {
         // Check if disabled
         if (!airEnabled) return;
 
-        const url = args.url as string | undefined;
-        if (!url) return;
+        // Validate url parameter type
+        const url = args.url;
+        if (!url || typeof url !== "string") return;
 
         return await interceptWebfetch(url);
       },
@@ -405,12 +367,12 @@ const AirPlugin: Plugin = async () => {
 
         if (!result) return; // Not worth compressing or failed
 
-        // Upload web content to facts (for websearch, web_fetch variants)
-        const name = toolName.toLowerCase();
-        if (name.includes("search") || name.includes("fetch")) {
-          const url = (event.args?.url as string) || (event.args?.query as string) || "";
-          if (url) {
-            uploadToFacts(url, result.compressed, toolName);
+        // Upload web content to facts (for whitelisted web tools only)
+        if (toolName === "websearch_web_search_exa") {
+          const query =
+            typeof event.args?.query === "string" ? event.args.query : "";
+          if (query) {
+            uploadToFacts(query, result.compressed, toolName);
           }
         }
 
