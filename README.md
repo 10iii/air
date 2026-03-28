@@ -21,8 +21,8 @@ AIR intercepts tool outputs **at the source**, filtering noise before it enters 
 |---------|-------------|-----|
 | `@10iii/air-core` | Core compression library | [![npm](https://img.shields.io/npm/v/@10iii/air-core)](https://www.npmjs.com/package/@10iii/air-core) |
 | `@10iii/air` | CLI tool (`air` command) | [![npm](https://img.shields.io/npm/v/@10iii/air)](https://www.npmjs.com/package/@10iii/air) |
-| `@10iii/air-mcp-server` | MCP server for Claude/etc | [![npm](https://img.shields.io/npm/v/@10iii/air-mcp-server)](https://www.npmjs.com/package/@10iii/air-mcp-server) |
 | `@10iii/air-oc-plugin` | OpenCode plugin | [![npm](https://img.shields.io/npm/v/@10iii/air-oc-plugin)](https://www.npmjs.com/package/@10iii/air-oc-plugin) |
+| `@10iii/air-openclaw-plugin` | OpenClaw plugin | [![npm](https://img.shields.io/npm/v/@10iii/air-openclaw-plugin)](https://www.npmjs.com/package/@10iii/air-openclaw-plugin) |
 
 ## Quick Start
 
@@ -57,21 +57,6 @@ const result = read.compress(fileContent, { mode: 'skeleton' });
 // Compress command output
 const bash = new BashCompressor();
 const result = bash.compress(output, { command: 'npm install' });
-```
-
-### MCP Server
-
-Add to your Claude Desktop config:
-
-```json
-{
-  "mcpServers": {
-    "air": {
-      "command": "npx",
-      "args": ["@10iii/air-mcp-server"]
-    }
-  }
-}
 ```
 
 ### OpenCode Plugin

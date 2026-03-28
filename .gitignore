@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 # TypeScript incremental metadata
 *.tsbuildinfo
+
+# Archived packages (not maintained)
+archived/
