@@ -7,9 +7,8 @@ OpenClaw plugin for AIR (AI-optimized Information Representation) - transparent 
 ## Installation
 
 ```bash
-npm install @10iii/air-openclaw-plugin
-# or
-pnpm add @10iii/air-openclaw-plugin
+# Global install
+npm install -g @10iii/air-openclaw-plugin
 ```
 
 ## Usage

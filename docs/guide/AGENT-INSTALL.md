@@ -36,7 +36,7 @@ npx @10iii/air init
 npm install -g @10iii/air-oc-plugin
 ```
 
-### Step 3a: 配置 opencode.json（项目级）
+### Step 3a: 配置 opencode.json
 
 在项目的 `opencode.json` 中添加插件引用：
 
@@ -65,14 +65,11 @@ ls -la
 
 ## OpenClaw 安装
 
-### Step 2b: 安装插件（项目级）
-
-OpenClaw 插件是项目级依赖：
+### Step 2b: 安装插件（全局）
 
 ```bash
-npm install @10iii/air-openclaw-plugin
-# 或
-pnpm add @10iii/air-openclaw-plugin
+# 全局安装
+npm install -g @10iii/air-openclaw-plugin
 ```
 
 ### Step 3b: 配置 OpenClaw
@@ -217,7 +214,7 @@ AIR 插件会自动将 LLM 付费搜索（Exa/Tavily）与免费搜索引擎结�
 ## 快速检查清单
 
 - [ ] 框架类型已确定（OpenCode / OpenClaw）
-- [ ] 插件已安装（npm/pnpm）
+- [ ] 插件已全局安装（`npm install -g`）
 - [ ] 配置文件已更新
 - [ ] 框架已重启
 - [ ] 测试命令显示 `[AIR: compressed]` 标记
