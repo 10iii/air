@@ -360,4 +360,120 @@ describe("AIR OC Plugin Logic", () => {
       expect(calculateRatio(1000, 100)).toBe(90);
     });
   });
+
+  describe("Bash Command Smart Routing", () => {
+    /**
+     * Simulates selectCompressorForBashCommand logic from index.ts
+     */
+    function selectCompressorForBashCommand(command: string): string {
+      const trimmed = command.trim();
+      const firstWord = trimmed.split(/\s+/)[0]?.toLowerCase() || "";
+      const baseName = firstWord.split("/").pop() || firstWord;
+
+      // Grep-like commands
+      if (/^(grep|egrep|fgrep|rg|ag|ack)$/.test(baseName)) {
+        return "GrepCompressor";
+      }
+
+      // Directory listing commands
+      if (/^(ls|find|tree|exa|eza|lsd)$/.test(baseName)) {
+        return "LsCompressor";
+      }
+
+      // Git diff
+      if (baseName === "git") {
+        const gitSubcommand = trimmed.match(/^git\s+(\S+)/)?.[1]?.toLowerCase();
+        if (gitSubcommand === "diff" || gitSubcommand === "show") {
+          return "DiffCompressor";
+        }
+        if (gitSubcommand === "log" && /\s-p\b/.test(trimmed)) {
+          return "DiffCompressor";
+        }
+      }
+
+      return "BashCompressor";
+    }
+
+    it("should route grep commands to GrepCompressor", () => {
+      expect(selectCompressorForBashCommand("grep -rn export .")).toBe("GrepCompressor");
+      expect(selectCompressorForBashCommand("grep --include='*.ts' pattern")).toBe("GrepCompressor");
+      expect(selectCompressorForBashCommand("/usr/bin/grep -r foo")).toBe("GrepCompressor");
+    });
+
+    it("should route ripgrep to GrepCompressor", () => {
+      expect(selectCompressorForBashCommand("rg export src/")).toBe("GrepCompressor");
+      expect(selectCompressorForBashCommand("rg -i pattern --type ts")).toBe("GrepCompressor");
+    });
+
+    it("should route egrep/fgrep to GrepCompressor", () => {
+      expect(selectCompressorForBashCommand("egrep 'foo|bar' file.txt")).toBe("GrepCompressor");
+      expect(selectCompressorForBashCommand("fgrep literal file.txt")).toBe("GrepCompressor");
+    });
+
+    it("should route ag (silver searcher) to GrepCompressor", () => {
+      expect(selectCompressorForBashCommand("ag pattern --ts")).toBe("GrepCompressor");
+    });
+
+    it("should route ls commands to LsCompressor", () => {
+      expect(selectCompressorForBashCommand("ls -la")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("ls -R /home")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("/bin/ls -l")).toBe("LsCompressor");
+    });
+
+    it("should route find commands to LsCompressor", () => {
+      expect(selectCompressorForBashCommand("find . -name '*.ts'")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("find /home -type f")).toBe("LsCompressor");
+    });
+
+    it("should route tree commands to LsCompressor", () => {
+      expect(selectCompressorForBashCommand("tree -L 2")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("tree src/")).toBe("LsCompressor");
+    });
+
+    it("should route exa/eza/lsd to LsCompressor", () => {
+      expect(selectCompressorForBashCommand("exa -l")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("eza --tree")).toBe("LsCompressor");
+      expect(selectCompressorForBashCommand("lsd -la")).toBe("LsCompressor");
+    });
+
+    it("should route git diff to DiffCompressor", () => {
+      expect(selectCompressorForBashCommand("git diff")).toBe("DiffCompressor");
+      expect(selectCompressorForBashCommand("git diff HEAD~3")).toBe("DiffCompressor");
+      expect(selectCompressorForBashCommand("git diff --stat")).toBe("DiffCompressor");
+    });
+
+    it("should route git show to DiffCompressor", () => {
+      expect(selectCompressorForBashCommand("git show abc123")).toBe("DiffCompressor");
+      expect(selectCompressorForBashCommand("git show HEAD")).toBe("DiffCompressor");
+    });
+
+    it("should route git log -p to DiffCompressor", () => {
+      expect(selectCompressorForBashCommand("git log -p")).toBe("DiffCompressor");
+      expect(selectCompressorForBashCommand("git log -p --oneline")).toBe("DiffCompressor");
+      expect(selectCompressorForBashCommand("git log --oneline -p")).toBe("DiffCompressor");
+    });
+
+    it("should NOT route git log (without -p) to DiffCompressor", () => {
+      expect(selectCompressorForBashCommand("git log")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("git log --oneline")).toBe("BashCompressor");
+    });
+
+    it("should route other git commands to BashCompressor", () => {
+      expect(selectCompressorForBashCommand("git status")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("git branch -a")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("git commit -m 'msg'")).toBe("BashCompressor");
+    });
+
+    it("should route other commands to BashCompressor", () => {
+      expect(selectCompressorForBashCommand("npm install")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("pnpm build")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("echo hello")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("cat file.txt")).toBe("BashCompressor");
+    });
+
+    it("should handle empty/whitespace commands gracefully", () => {
+      expect(selectCompressorForBashCommand("")).toBe("BashCompressor");
+      expect(selectCompressorForBashCommand("   ")).toBe("BashCompressor");
+    });
+  });
 });

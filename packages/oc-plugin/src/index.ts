@@ -142,6 +142,49 @@ function selectCompressor(toolName: string): CompressorLike | null {
 }
 
 // =============================================================================
+// Bash command routing
+// =============================================================================
+
+/**
+ * Detect the type of bash command and select appropriate compressor.
+ * This enables smarter compression for commands like `grep`, `ls`, `git diff`, etc.
+ */
+function selectCompressorForBashCommand(command: string): CompressorLike | null {
+  const trimmed = command.trim();
+  const firstWord = trimmed.split(/\s+/)[0]?.toLowerCase() || "";
+
+  // Remove path prefix (e.g., /usr/bin/grep → grep)
+  const baseName = firstWord.split("/").pop() || firstWord;
+
+  // Grep-like commands → GrepCompressor
+  // Includes: grep, egrep, fgrep, rg (ripgrep), ag (silver searcher), ack
+  if (/^(grep|egrep|fgrep|rg|ag|ack)$/.test(baseName)) {
+    return getCompressor("GrepCompressor");
+  }
+
+  // Directory listing commands → LsCompressor
+  // Includes: ls, find, tree, exa, eza, lsd
+  if (/^(ls|find|tree|exa|eza|lsd)$/.test(baseName)) {
+    return getCompressor("LsCompressor");
+  }
+
+  // Git diff → DiffCompressor
+  // Match: "git diff", "git show", "git log -p"
+  if (baseName === "git") {
+    const gitSubcommand = trimmed.match(/^git\s+(\S+)/)?.[1]?.toLowerCase();
+    if (gitSubcommand === "diff" || gitSubcommand === "show") {
+      return getCompressor("DiffCompressor");
+    }
+    if (gitSubcommand === "log" && /\s-p\b/.test(trimmed)) {
+      return getCompressor("DiffCompressor");
+    }
+  }
+
+  // Default: use BashCompressor
+  return getCompressor("BashCompressor");
+}
+
+// =============================================================================
 // Facts upload
 // =============================================================================
 
@@ -378,6 +421,29 @@ const AirPlugin: Plugin = async () => {
               typeof event.args?.url === "string" ? event.args.url : "webfetch";
             uploadToFacts(url, result.compressed, toolName);
             output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;
+          }
+          return;
+        }
+
+        // =====================================================================
+        // Bash command smart routing: detect grep/ls/git-diff and use
+        // appropriate compressor instead of generic BashCompressor
+        // =====================================================================
+        if (toolName === "bash") {
+          const command =
+            typeof event.args?.command === "string" ? event.args.command : "";
+          const compressor = selectCompressorForBashCommand(command);
+          if (compressor) {
+            try {
+              const result = compressor.compress(original);
+              const gain = original.length - result.output.length;
+              if (gain >= CONFIG.minGain) {
+                const ratio = Math.round((gain / original.length) * 100);
+                output.output = `${result.output}\n[AIR: compressed ${ratio}% | air_off() for raw]`;
+              }
+            } catch {
+              // Compression failed, leave original
+            }
           }
           return;
         }
