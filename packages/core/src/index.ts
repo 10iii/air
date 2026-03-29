@@ -39,6 +39,8 @@ export { SearchAggregator } from "./search/aggregator.js";
 export type { SearchResult, AggregatedResult, AggregatorOptions } from "./search/aggregator.js";
 export type { SearchEngine, EngineSearchOptions } from "./search/engines.js";
 export { BaiduEngine, BingEngine, DuckDuckGoEngine, SogouEngine, AirFactsEngine, getEnginesForRegion, getEngines } from "./search/engines.js";
+export { airSearch } from "./search/search.js";
+export type { AirSearchOptions, AirSearchResult } from "./search/search.js";
 export { stripAnsiCodes, isErrorLine, isWarningLine, isNoiseLine } from "./compressors/bash.js";
 export { detectLanguage, isLineComment, isImportLine } from "./parsers/file.js";
 export type { LanguageInfo } from "./parsers/file.js";

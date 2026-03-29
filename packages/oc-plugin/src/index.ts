@@ -10,6 +10,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { createRequire } from "node:module";
+import { mergeSearchResults, isSearchTool } from "./search-merge.js";
 
 // =============================================================================
 // Types
@@ -337,7 +338,7 @@ const AirPlugin: Plugin = async () => {
       },
 
       // =========================================================================
-      // After-hook: Compress other tool outputs
+      // After-hook: Compress other tool outputs + Search merge
       // =========================================================================
       "tool.execute.after": async (event: ToolExecuteEvent) => {
         const { toolName, output } = event;
@@ -359,22 +360,43 @@ const AirPlugin: Plugin = async () => {
           return; // No compression
         }
 
-        // Only compress strings
+        // Only process strings
         if (!output || typeof output.output !== "string") return;
 
         const original = output.output;
+
+        // =====================================================================
+        // Special handling for search tools: Dual-source merge
+        // =====================================================================
+        if (isSearchTool(toolName)) {
+          const query =
+            typeof event.args?.query === "string" ? event.args.query : "";
+
+          // Try to merge with AIR results
+          const merged = await mergeSearchResults(toolName, original, query);
+
+          if (merged) {
+            // Upload merged content to facts
+            uploadToFacts(query || "search", merged, toolName);
+            output.output = `${merged}\n[AIR: search merge | air_off() for raw]`;
+            return;
+          }
+
+          // Fallback: just compress the original
+          const result = compressOutput(toolName, original);
+          if (result) {
+            uploadToFacts(query || "search", result.compressed, toolName);
+            output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;
+          }
+          return;
+        }
+
+        // =====================================================================
+        // Standard compression for other tools
+        // =====================================================================
         const result = compressOutput(toolName, original);
 
         if (!result) return; // Not worth compressing or failed
-
-        // Upload web content to facts (for whitelisted web tools only)
-        if (toolName === "websearch_web_search_exa") {
-          const query =
-            typeof event.args?.query === "string" ? event.args.query : "";
-          if (query) {
-            uploadToFacts(query, result.compressed, toolName);
-          }
-        }
 
         // Apply compression with marker at end
         output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;

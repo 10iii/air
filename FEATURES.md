@@ -520,6 +520,211 @@ features:
     designed_at: null
     implemented_at: null
     tested_at: null
+
+  # --- Dual-Source Search Merge (讨论于 2026-03-28) ---
+
+  - id: F510
+    title: Dual-Source Search Merge
+    summary: |
+      双源搜索合并：LLM 工具执行后，串行调用 AIR 免费引擎，
+      结果聚合去重后返回。当 API key 耗尽时仍有结果。
+    impl: []
+    tests: []
+    depends: [F020, F300, F400]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: null
+    tested_at: null
+    design_notes: |
+      ## 核心架构（串行方案）
+      - after-hook 触发时：
+        1. 解析 LLM 工具（Exa/Tavily）返回的结果
+        2. 串行调用 AIR 搜索引擎（DDG/Bing/Baidu/Sogou）
+        3. 使用 SearchAggregator 合并去重
+        4. 使用 SearchCompressor 压缩输出
+
+      ## 优势
+      - 无状态共享，单 hook 实现
+      - 代码简单，调试容易
+      - 延迟增加 ~2-3s（可接受）
+
+      ## 容错设计
+      - Exa 成功 + AIR 成功 → 合并去重
+      - Exa 失败 + AIR 成功 → 纯 AIR 结果（关键！API key 耗尽时仍可用）
+      - Exa 成功 + AIR 失败 → 纯 Exa 结果
+      - 双失败 → 返回错误信息
+
+      ## 工具名适配
+      - OC: websearch_* 前缀匹配（MCP 桥接格式）
+      - OpenClaw: web_search 固定名
+
+  - id: F511
+    title: AIR Search Core Function
+    summary: 从 CLI 抽取可复用的搜索核心函数（async），供插件调用
+    impl: [core/src/search/search.ts]
+    tests: [core/src/__tests__/search-fn.test.ts]
+    depends: [F020, F021, F022, F023, F024, F025]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: 2026-03-28T00:00:00Z
+    tested_at: 2026-03-28T00:00:00Z
+    design_notes: |
+      ## 函数签名
+      ```typescript
+      export async function airSearch(
+        query: string,
+        options?: { maxResults?: number; timeout?: number }
+      ): Promise<AirSearchResult>
+      ```
+
+      ## 返回类型
+      ```typescript
+      interface AirSearchResult {
+        results: AggregatedResult[];
+        successfulEngines: string[];
+        failedEngines: string[];
+        totalTimeMs: number;
+      }
+      ```
+
+      ## 实现
+      - 复用现有 getEngines() + SearchAggregator
+      - 添加超时控制（默认 10s）
+      - 返回聚合后的结果数组 + 元数据
+
+  - id: F512
+    title: OC Plugin Search Merge Hook
+    summary: OpenCode 插件的双源搜索 after-hook 实现（串行）
+    impl: [oc-plugin/src/search-merge.ts]
+    tests: [oc-plugin/src/__tests__/search-merge.test.ts]
+    depends: [F510, F511, F300]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: 2026-03-28T15:45:00Z
+    tested_at: 2026-03-28T15:45:00Z
+    design_notes: |
+      ## 工具名匹配
+      - 匹配 `websearch_*` 前缀（支持不同 MCP 服务商）
+      - 当前已知: websearch_web_search_exa
+
+      ## 输出解析
+      - 尝试解析 Exa JSON 格式
+      - 失败时视为空结果，继续用 AIR
+
+      ## 实现细节
+      - 串行调用 AIR 搜索（after-hook 内）
+      - 合并 Exa + AIR 结果，URL 去重
+      - 优雅降级：AIR 失败时仍返回 Exa 结果
+      - 9 个测试全通过
+
+  - id: F513
+    title: OpenClaw Plugin Search Merge Hook
+    summary: OpenClaw 插件的双源搜索 hook 实现（串行）
+    impl: [openclaw-plugin/src/search-merge.ts, openclaw-plugin/src/hooks.ts]
+    tests: [openclaw-plugin/src/__tests__/search-merge.test.ts]
+    depends: [F510, F511, F400]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: 2026-03-28T16:25:00Z
+    tested_at: 2026-03-28T16:25:00Z
+    design_notes: |
+      ## 工具名匹配
+      - 固定匹配 `web_search`
+
+      ## 与 OC 版本差异
+      - 使用 tool_result_persist hook（而非 tool.execute.after）
+      - Message 结构不同，需适配
+      - hook handler 改为 async 以支持搜索合并
+
+      ## 实现细节
+      - 串行调用 AIR 搜索（hook 内部）
+      - 合并 LLM + AIR 结果，URL 去重
+      - 优雅降级：AIR 失败时返回 LLM-only 格式化结果
+      - 10 个测试全通过（含集成测试）
+
+  - id: F514
+    title: Facts Upload on Web/Search Hooks
+    summary: |
+      在 webfetch/websearch after-hook 中，无论压缩是否生效，
+      都将内容上传到 facts.airgo.dev 构建知识库。
+    impl: [oc-plugin/src/index.ts, openclaw-plugin/src/hooks.ts]
+    tests: []
+    depends: [F300, F400]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: 2026-03-28T17:20:00Z
+    tested_at: 2026-03-28T17:20:00Z
+    design_notes: |
+      ## 决策记录
+      - 2026-03-28: 用户决定初期就做，不延后
+      - CLI `air web` & `air search` 已与 facts.airgo.dev 全链路打通
+      - 服务器端已在工作
+
+      ## 核心原则
+      **无论 AIR 压缩是否生效，都必须上传到 Facts**
+      - 这是数据收集的核心逻辑，不依赖于压缩结果
+      - AIR 压缩失败/跳过 ≠ 不上传
+      - 只有明确的隐私过滤才能阻止上传
+
+      ## 实现状态
+      
+      ### OC Plugin（已完成）
+      - `uploadToFacts()` 函数：fire-and-forget 模式
+      - 配置：`CONFIG.factsUploadEnabled` / `CONFIG.factsApiUrl`
+      - 上传点：webfetch 压缩后 + 搜索合并/压缩后
+
+      ### OpenClaw Plugin（已完成）
+      - `uploadToFacts()` 函数：fire-and-forget 模式
+      - 配置：`FACTS_UPLOAD_ENABLED` / `FACTS_API_URL` 
+      - 上传点：搜索合并后 + 压缩后 + 未压缩时
+      - 支持工具：web_search, browse, http
+
+      ## 环境变量
+      - `AIR_FACTS_UPLOAD=false` 可禁用上传（默认启用）
+
+      ## 隐私考虑
+      - 默认开启，可通过 AIR_FACTS_UPLOAD=false 关闭
+      - 不上传敏感 URL（localhost, 内网 IP, file://）
+      - README 明确声明数据收集行为
+
+  - id: F520
+    title: Facts Search API
+    summary: |
+      facts.airgo.dev/v1/search API：Agent 专用的知识库搜索，
+      返回众包收集的高质量内容。
+    impl: [air-facts-api/]
+    tests: []
+    depends: [F514]
+    designed_at: 2026-03-28T00:00:00Z
+    implemented_at: 2026-03-28T00:00:00Z
+    tested_at: null
+    design_notes: |
+      ## 状态
+      - 2026-03-28: 服务器端已在工作（Cloudflare Workers）
+      - 配置文件：`packages/air-facts-api/wrangler.toml`
+
+      ## API 设计
+      GET /v1/search?q={query}&limit={n}
+      
+      Response:
+      {
+        "ok": true,
+        "results": [
+          {
+            "url": "...",
+            "title": "...",
+            "snippet": "...",
+            "source": "webfetch|websearch",
+            "freshness": "2026-03-28",
+            "confidence": 0.85
+          }
+        ],
+        "total": 42,
+        "query_time_ms": 12
+      }
+
+      ## 数据来源
+      - 所有 AIR 用户的 webfetch/websearch 上传
+      - 去重、质量评估、新鲜度打分
+
+      ## 商业模型
+      - 免费层：10 req/min，基础结果
+      - 付费层：100+ req/min，优先队列
 ---
 
 # AIR Features
@@ -570,6 +775,18 @@ air/
 
 | Date | Change |
 |------|--------|
+| 2026-03-29 | Code Review Round 2 修复：airSearch 超时 Promise 内存泄漏（clearTimeout） |
+| 2026-03-29 | Code Review Round 2 修复：OC 插件 search-merge 添加 fallback 输出 |
+| 2026-03-29 | Code Review 修复：所有 catch 块添加 console.debug 错误日志 |
+| 2026-03-29 | Code Review 修复：OpenClaw uploadToFacts 添加 AbortController 超时控制 |
+| 2026-03-29 | Code Review 修复：OpenClaw 添加 getEventArgs() 类型安全函数 |
+| 2026-03-29 | F511-F514 全部完成：849 测试通过 |
+| 2026-03-28 | F511 实现完成：airSearch() 核心函数 + 7 个测试 |
+| 2026-03-28 | F514/F520 更新：用户决定初期就做，CLI 已全链路打通，服务器已在工作 |
+| 2026-03-28 | 新增 F514 (Facts Upload) + F520 (Facts Search API) 设计 |
+| 2026-03-28 | F510-F513 更新为串行方案（简化实现，~3h 工作量） |
+| 2026-03-28 | 设计 F510-F513 双源搜索合并功能 |
+| 2026-03-28 | 归档 edit/session/media 命令（F008/F009/F012/F108/F109/F112） |
 | 2026-03-28 | 归档 MCP Server，不再开发和发布 |
 | 2026-03-28 | 初始化 FEATURES.md，记录 50+ 功能点 |
 
@@ -578,3 +795,5 @@ air/
 - F042 (Tree-sitter Integration) 为 draft 状态，设计中
 - F200 (MCP Server) **已归档，不再维护**（代码在 archived/mcp-server/）
 - F500-F501 为计划中的功能
+- F510-F513 **双源搜索合并**：designed 状态，等待实现
+- F514 + F520 **Facts 知识库**：designed 状态，构建 Agent 专用搜索生态

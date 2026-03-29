@@ -6,7 +6,7 @@ Paste this into your LLM agent session:
 
 ```
 Install AIR compression plugin by following the instructions here:
-https://raw.githubusercontent.com/10iii/air/main/docs/guide/installation.md
+https://raw.githubusercontent.com/10iii/air/main/docs/guide/AGENT-INSTALL.md
 ```
 
 **Manual Installation:**
@@ -19,9 +19,12 @@ This will:
 1. Register the AIR plugin in `opencode.json`
 2. Inject AIR usage guide into your `AGENTS.md`, `CLAUDE.md`, etc.
 
+> **Multiple Framework Support**: AIR 支持 OpenCode 和 OpenClaw 两种框架。
+> 完整的多框架安装指南见 [AGENT-INSTALL.md](./AGENT-INSTALL.md)。
+
 ---
 
-## For LLM Agents
+## For LLM Agents (OpenCode)
 
 > **IMPORTANT: Use `curl` to fetch this file, NOT WebFetch.**
 > WebFetch may summarize content and lose critical details. Always use:

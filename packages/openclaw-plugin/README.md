@@ -2,6 +2,8 @@
 
 OpenClaw plugin for AIR (AI-optimized Information Representation) - transparent compression for tool outputs.
 
+> **For AI Agents**: See the unified installation guide at [AGENT-INSTALL.md](../../docs/guide/AGENT-INSTALL.md)
+
 ## Installation
 
 ```bash

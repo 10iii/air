@@ -24,6 +24,7 @@ export type { ToolDefinition } from "./tools.js";
 // Re-export utilities for testing/extension
 export { selectCompressor, shouldCompress, getCompressedTools } from "./compressor.js";
 export { isEnabled, enable, disable, reset } from "./state.js";
+export { isSearchTool, mergeSearchResults } from "./search-merge.js";
 
 // =============================================================================
 // Types (OpenClaw Plugin API)
