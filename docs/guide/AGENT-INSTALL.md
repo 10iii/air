@@ -26,19 +26,19 @@ fi
 
 ## OpenCode 安装
 
-### Step 2a: 安装插件
+### Step 2a: 安装插件（全局）
 
 ```bash
-# 推荐：使用 init 命令（自动配置）
+# 推荐：使用 init 命令（自动完成全部配置）
 npx @10iii/air init
 
-# 或手动安装
-npm install @10iii/air-oc-plugin
+# 或手动全局安装
+npm install -g @10iii/air-oc-plugin
 ```
 
-### Step 3a: 配置 opencode.json
+### Step 3a: 配置 opencode.json（项目级）
 
-确保 `opencode.json` 包含插件：
+在项目的 `opencode.json` 中添加插件引用：
 
 ```json
 {
@@ -46,15 +46,10 @@ npm install @10iii/air-oc-plugin
 }
 ```
 
-如果配置文件已存在，手动添加：
+**注意**：插件包全局安装后，每个项目的 `opencode.json` 都需要添加引用才能启用。
+`npx @10iii/air init` 会自动完成这一步。
 
-```bash
-# 检查现有配置
-cat opencode.json
-
-# 如果 plugins 数组不存在或为空，添加插件
-# 使用 jq 或手动编辑
-```
+如果配置文件已存在，手动编辑添加到 `plugins` 数组中。
 
 ### Step 4a: 验证安装
 
@@ -70,7 +65,9 @@ ls -la
 
 ## OpenClaw 安装
 
-### Step 2b: 安装插件
+### Step 2b: 安装插件（项目级）
+
+OpenClaw 插件是项目级依赖：
 
 ```bash
 npm install @10iii/air-openclaw-plugin
