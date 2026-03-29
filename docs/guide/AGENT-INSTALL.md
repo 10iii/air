@@ -49,11 +49,11 @@ cat ~/.opencode.json 2>/dev/null || echo '{}' > ~/.opencode.json
 
 ```json
 {
-  "plugins": ["@10iii/air-oc-plugin"]
+  "plugin": ["@10iii/air-oc-plugin"]
 }
 ```
 
-如果已有其他配置，只需添加 `plugins` 数组或追加到现有数组中。
+如果已有其他配置，只需添加 `plugin` 数组或追加到现有数组中。
 
 **注意**：`npx @10iii/air init` 会自动完成这一步。
 
@@ -198,7 +198,7 @@ AIR 提供两个控制工具，两个框架通用：
 
 ```bash
 # OpenCode
-cat ~/.opencode.json | grep -A2 '"plugins"'
+cat ~/.opencode.json | grep -A2 '"plugin"'
 
 # OpenClaw
 cat ~/.openclaw.json | grep -A2 '"plugins"'

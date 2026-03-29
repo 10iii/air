@@ -20,7 +20,7 @@ Add to your `opencode.json`:
 
 ```json
 {
-  "plugins": ["@10iii/air-oc-plugin"]
+  "plugin": ["@10iii/air-oc-plugin"]
 }
 ```
 
