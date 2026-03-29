@@ -12,10 +12,10 @@
 
 ```bash
 # 检测 OpenCode
-if [ -f "opencode.json" ]; then
+if [ -f "opencode.json" ] || [ -f ~/.opencode.json ]; then
     echo "FRAMEWORK=opencode"
 # 检测 OpenClaw
-elif [ -f "openclaw.json" ] || [ -f ".openclaw/config.json" ]; then
+elif [ -f "openclaw.json" ] || [ -f ~/.openclaw.json ] || [ -f ~/.openclaw/config.json ]; then
     echo "FRAMEWORK=openclaw"
 else
     echo "FRAMEWORK=unknown"
@@ -36,9 +36,16 @@ npx @10iii/air init
 npm install -g @10iii/air-oc-plugin
 ```
 
-### Step 3a: 配置 opencode.json
+### Step 3a: 配置全局 opencode.json
 
-在项目的 `opencode.json` 中添加插件引用：
+在**全局配置文件** `~/.opencode.json` 中添加插件引用：
+
+```bash
+# 检查全局配置是否存在
+cat ~/.opencode.json 2>/dev/null || echo '{}' > ~/.opencode.json
+```
+
+编辑 `~/.opencode.json`，添加插件：
 
 ```json
 {
@@ -46,10 +53,9 @@ npm install -g @10iii/air-oc-plugin
 }
 ```
 
-**注意**：插件包全局安装后，每个项目的 `opencode.json` 都需要添加引用才能启用。
-`npx @10iii/air init` 会自动完成这一步。
+如果已有其他配置，只需添加 `plugins` 数组或追加到现有数组中。
 
-如果配置文件已存在，手动编辑添加到 `plugins` 数组中。
+**注意**：`npx @10iii/air init` 会自动完成这一步。
 
 ### Step 4a: 验证安装
 
@@ -72,20 +78,27 @@ ls -la
 npm install -g @10iii/air-openclaw-plugin
 ```
 
-### Step 3b: 配置 OpenClaw
+### Step 3b: 配置全局 OpenClaw 配置
 
-在 OpenClaw 配置文件中添加插件：
+在**全局配置文件**中添加插件引用。OpenClaw 全局配置位置可能是：
 
-**方式一：配置文件**
+- `~/.openclaw.json`
+- `~/.openclaw/config.json`
+
+```bash
+# 检查并创建全局配置
+cat ~/.openclaw.json 2>/dev/null || echo '{}' > ~/.openclaw.json
+```
+
+编辑全局配置，添加插件：
 
 ```json
-// openclaw.json 或 .openclaw/config.json
 {
   "plugins": ["@10iii/air-openclaw-plugin"]
 }
 ```
 
-**方式二：编程方式**
+**或编程方式**（在应用初始化代码中）：
 
 ```typescript
 import airPlugin from "@10iii/air-openclaw-plugin";
@@ -96,10 +109,11 @@ airPlugin.activate(api);
 
 ### Step 4b: 推荐配置
 
-为获得更好的压缩效果，增加 web fetch 限制：
+为获得更好的压缩效果，增加 web fetch 限制（添加到全局配置）：
 
 ```json
 {
+  "plugins": ["@10iii/air-openclaw-plugin"],
   "webFetch": {
     "maxChars": 100000,
     "maxCharsCap": 200000,
@@ -180,14 +194,14 @@ AIR 提供两个控制工具，两个框架通用：
 
 ### 插件未加载
 
-检查配置文件是否正确包含插件：
+检查**全局配置文件**是否正确包含插件：
 
 ```bash
 # OpenCode
-cat opencode.json | grep -A2 '"plugins"'
+cat ~/.opencode.json | grep -A2 '"plugins"'
 
 # OpenClaw
-cat openclaw.json | grep -A2 '"plugins"'
+cat ~/.openclaw.json | grep -A2 '"plugins"'
 ```
 
 ### 想查看原始输出
@@ -215,7 +229,7 @@ AIR 插件会自动将 LLM 付费搜索（Exa/Tavily）与免费搜索引擎结�
 
 - [ ] 框架类型已确定（OpenCode / OpenClaw）
 - [ ] 插件已全局安装（`npm install -g`）
-- [ ] 配置文件已更新
+- [ ] **全局配置文件**已更新（`~/.opencode.json` 或 `~/.openclaw.json`）
 - [ ] 框架已重启
 - [ ] 测试命令显示 `[AIR: compressed]` 标记
 
