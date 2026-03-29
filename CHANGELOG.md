@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-03-30
+
+### Fixed
+- **[CRITICAL]** OC plugin hooks now use correct dual-parameter signature
+  - `tool.execute.before(input, output)` instead of `(event)`
+  - `tool.execute.after(input, output)` instead of `(event)`
+  - Property access changed: `input.tool` instead of `event.toolName`
+  - This was causing hooks to silently fail (undefined values) in OC 1.3.x
+
 ## [0.2.0] - 2026-03-26
 
 ### Added
@@ -45,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `air-media` - Media transcript compression
 - `air-search` - Web search aggregation
 
-[Unreleased]: https://github.com/10iii/air/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/10iii/air/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/10iii/air/compare/v0.2.0...v0.2.11
 [0.2.0]: https://github.com/10iii/air/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/10iii/air/releases/tag/v0.1.1

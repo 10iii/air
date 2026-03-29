@@ -24,10 +24,30 @@ interface CompressorLike {
 
 type CompressorConstructor = new () => CompressorLike;
 
-interface ToolExecuteEvent {
-  toolName: string;
+/**
+ * OpenCode hook input types (from @opencode-ai/plugin)
+ */
+interface ToolExecuteBeforeInput {
+  tool: string;
+  sessionID: string;
+  callID: string;
+}
+
+interface ToolExecuteBeforeOutput {
   args: Record<string, unknown>;
-  output?: { output: string | unknown };
+}
+
+interface ToolExecuteAfterInput {
+  tool: string;
+  sessionID: string;
+  callID: string;
+  args: Record<string, unknown>;
+}
+
+interface ToolExecuteAfterOutput {
+  title: string;
+  output: string;
+  metadata: Record<string, unknown>;
 }
 
 // =============================================================================
@@ -364,8 +384,12 @@ const AirPlugin: Plugin = async () => {
       // =========================================================================
       // Before-hook: Intercept webfetch to avoid 5M limit
       // =========================================================================
-      "tool.execute.before": async (event: ToolExecuteEvent) => {
-        const { toolName, args } = event;
+      "tool.execute.before": async (
+        input: ToolExecuteBeforeInput,
+        output: ToolExecuteBeforeOutput,
+      ) => {
+        const { tool: toolName } = input;
+        const { args } = output;
 
         // Only intercept webfetch
         if (toolName !== "webfetch") return;
@@ -377,14 +401,25 @@ const AirPlugin: Plugin = async () => {
         const url = args.url;
         if (!url || typeof url !== "string") return;
 
-        return await interceptWebfetch(url);
+        // Intercept webfetch and return custom result
+        const result = await interceptWebfetch(url);
+        if (result) {
+          // Set a flag in args to signal that we handled this
+          // Note: OC before-hook can't return output directly, 
+          // we need to use the after-hook for that
+          (args as Record<string, unknown>)._airIntercepted = true;
+          (args as Record<string, unknown>)._airOutput = result.output;
+        }
       },
 
       // =========================================================================
       // After-hook: Compress other tool outputs + Search merge
       // =========================================================================
-      "tool.execute.after": async (event: ToolExecuteEvent) => {
-        const { toolName, output } = event;
+      "tool.execute.after": async (
+        input: ToolExecuteAfterInput,
+        output: ToolExecuteAfterOutput,
+      ) => {
+        const { tool: toolName, args } = input;
 
         // Skip air_on/air_off themselves
         if (toolName === "air_on" || toolName === "air_off") return;
@@ -406,10 +441,18 @@ const AirPlugin: Plugin = async () => {
         const original = output.output;
 
         // =====================================================================
-        // webfetch fallback: if before-hook failed, compress here
-        // (before-hook returns undefined on failure, original tool runs)
+        // webfetch: Check if before-hook intercepted, or compress here
         // =====================================================================
         if (toolName === "webfetch") {
+          // Check if before-hook already handled this
+          if ((args as Record<string, unknown>)._airIntercepted) {
+            const interceptedOutput = (args as Record<string, unknown>)._airOutput;
+            if (typeof interceptedOutput === "string") {
+              output.output = interceptedOutput;
+            }
+            return;
+          }
+
           // Skip if already compressed by before-hook
           if (original.includes("[AIR:")) return;
 
@@ -418,7 +461,7 @@ const AirPlugin: Plugin = async () => {
           if (result) {
             // Extract URL from args for facts upload
             const url =
-              typeof event.args?.url === "string" ? event.args.url : "webfetch";
+              typeof args?.url === "string" ? args.url : "webfetch";
             uploadToFacts(url, result.compressed, toolName);
             output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;
           }
@@ -431,7 +474,7 @@ const AirPlugin: Plugin = async () => {
         // =====================================================================
         if (toolName === "bash") {
           const command =
-            typeof event.args?.command === "string" ? event.args.command : "";
+            typeof args?.command === "string" ? args.command : "";
           const compressor = selectCompressorForBashCommand(command);
           if (compressor) {
             try {
@@ -453,7 +496,7 @@ const AirPlugin: Plugin = async () => {
         // =====================================================================
         if (isSearchTool(toolName)) {
           const query =
-            typeof event.args?.query === "string" ? event.args.query : "";
+            typeof args?.query === "string" ? args.query : "";
 
           // Try to merge with AIR results
           const merged = await mergeSearchResults(toolName, original, query);
