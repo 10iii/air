@@ -346,9 +346,6 @@ const AirPlugin: Plugin = async () => {
         // Skip air_on/air_off themselves
         if (toolName === "air_on" || toolName === "air_off") return;
 
-        // Skip webfetch (handled by before-hook)
-        if (toolName === "webfetch") return;
-
         // Check if disabled
         if (!airEnabled) {
           if (disabledCallsRemaining > 0) {
@@ -364,6 +361,26 @@ const AirPlugin: Plugin = async () => {
         if (!output || typeof output.output !== "string") return;
 
         const original = output.output;
+
+        // =====================================================================
+        // webfetch fallback: if before-hook failed, compress here
+        // (before-hook returns undefined on failure, original tool runs)
+        // =====================================================================
+        if (toolName === "webfetch") {
+          // Skip if already compressed by before-hook
+          if (original.includes("[AIR:")) return;
+
+          // Compress the original webfetch output
+          const result = compressOutput(toolName, original);
+          if (result) {
+            // Extract URL from args for facts upload
+            const url =
+              typeof event.args?.url === "string" ? event.args.url : "webfetch";
+            uploadToFacts(url, result.compressed, toolName);
+            output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;
+          }
+          return;
+        }
 
         // =====================================================================
         // Special handling for search tools: Dual-source merge
