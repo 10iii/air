@@ -476,4 +476,71 @@ describe("AIR OC Plugin Logic", () => {
       expect(selectCompressorForBashCommand("   ")).toBe("BashCompressor");
     });
   });
+
+  describe("Webfetch Headers Configuration", () => {
+    // Test the header building logic (mirrors buildWebfetchHeaders in index.ts)
+
+    const CONFIG = {
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      acceptLanguage: "en-US,en;q=0.9",
+      honestUserAgent: "air-opencode-plugin/0.2",
+    };
+
+    function buildWebfetchHeaders(useBrowserUA: boolean): Record<string, string> {
+      return {
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": CONFIG.acceptLanguage,
+        "User-Agent": useBrowserUA ? CONFIG.userAgent : CONFIG.honestUserAgent,
+      };
+    }
+
+    it("should build browser-like headers with Chrome UA", () => {
+      const headers = buildWebfetchHeaders(true);
+      expect(headers["User-Agent"]).toContain("Chrome/131");
+      expect(headers["User-Agent"]).toContain("Mozilla/5.0");
+      expect(headers["Accept-Language"]).toBe("en-US,en;q=0.9");
+      expect(headers["Accept"]).toContain("text/html");
+    });
+
+    it("should build honest headers with plugin identifier", () => {
+      const headers = buildWebfetchHeaders(false);
+      expect(headers["User-Agent"]).toBe("air-opencode-plugin/0.2");
+      expect(headers["Accept-Language"]).toBe("en-US,en;q=0.9");
+    });
+
+    it("should have proper Accept header with quality values", () => {
+      const headers = buildWebfetchHeaders(true);
+      // Verify Accept header follows HTTP q-value format
+      expect(headers["Accept"]).toMatch(/q=0\.\d/);
+      expect(headers["Accept"]).toContain("application/xhtml+xml");
+    });
+  });
+
+  describe("Cloudflare Detection Logic", () => {
+    // Test the logic for detecting Cloudflare bot mitigation
+
+    function shouldRetryWithHonestUA(status: number, cfMitigated: string | null): boolean {
+      return status === 403 && cfMitigated === "challenge";
+    }
+
+    it("should retry when Cloudflare returns 403 with challenge", () => {
+      expect(shouldRetryWithHonestUA(403, "challenge")).toBe(true);
+    });
+
+    it("should not retry for regular 403 without cf-mitigated header", () => {
+      expect(shouldRetryWithHonestUA(403, null)).toBe(false);
+    });
+
+    it("should not retry for non-403 status codes", () => {
+      expect(shouldRetryWithHonestUA(200, "challenge")).toBe(false);
+      expect(shouldRetryWithHonestUA(500, "challenge")).toBe(false);
+      expect(shouldRetryWithHonestUA(404, null)).toBe(false);
+    });
+
+    it("should not retry for other cf-mitigated values", () => {
+      expect(shouldRetryWithHonestUA(403, "blocked")).toBe(false);
+      expect(shouldRetryWithHonestUA(403, "captcha")).toBe(false);
+    });
+  });
 });

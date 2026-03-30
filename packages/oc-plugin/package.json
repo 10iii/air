@@ -1,6 +1,6 @@
 {
   "name": "@10iii/air-oc-plugin",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "OpenCode plugin for AIR - AI-optimized tool output compression",
   "type": "module",
   "license": "MIT",

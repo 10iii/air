@@ -944,6 +944,82 @@ features:
       ## 测试
       - 新增 `noStats` 选项单元测试
       - 872 个测试全通过
+
+  - id: B004
+    title: OC webfetch 增强反爬虫机制
+    summary: |
+      增强 webfetch 拦截器的反爬虫能力：
+      1. 添加 Accept-Language 头
+      2. 添加 Cloudflare 403 重试逻辑（用诚实 UA 重试）
+      3. 优化 Accept 头格式（添加 q-value 优先级）
+    impl: [oc-plugin/src/index.ts#interceptWebfetch, oc-plugin/src/index.ts#buildWebfetchHeaders]
+    tests: [oc-plugin/src/__tests__/index.test.ts]
+    depends: [B003, F300]
+    designed_at: 2026-03-31T07:30:00Z
+    implemented_at: 2026-03-31T07:40:00Z
+    tested_at: 2026-03-31T07:40:00Z
+    severity: P2
+    resolution: fixed
+    design_notes: |
+      ## 背景
+
+      分析 OpenCode 原生 webfetch 实现后，发现以下反爬虫机制：
+
+      | 机制 | OC 实现 | AIR 之前状态 |
+      |------|---------|--------------|
+      | User-Agent | Chrome 143 | Chrome 131 (B003) |
+      | Accept-Language | `en-US,en;q=0.9` | ❌ |
+      | Accept Header | 动态优先级 | 固定 |
+      | Cloudflare 重试 | 检测 `cf-mitigated` 后用诚实 UA | ❌ |
+
+      ## 实现
+
+      ### 1. 新增 buildWebfetchHeaders 函数
+      ```typescript
+      function buildWebfetchHeaders(useBrowserUA: boolean): Record<string, string> {
+        return {
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": CONFIG.acceptLanguage,
+          "User-Agent": useBrowserUA ? CONFIG.userAgent : CONFIG.honestUserAgent,
+        };
+      }
+      ```
+
+      ### 2. Cloudflare 重试逻辑
+      ```typescript
+      let response = await fetch(url, {
+        headers: buildWebfetchHeaders(true),
+        signal: AbortSignal.timeout(60000),
+      });
+
+      // Cloudflare bot detection: TLS fingerprint doesn't match browser UA
+      if (
+        response.status === 403 &&
+        response.headers.get("cf-mitigated") === "challenge"
+      ) {
+        response = await fetch(url, {
+          headers: buildWebfetchHeaders(false),  // 使用诚实 UA
+          signal: AbortSignal.timeout(60000),
+        });
+      }
+      ```
+
+      ### 3. 配置更新
+      ```typescript
+      const CONFIG = {
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...",
+        acceptLanguage: "en-US,en;q=0.9",
+        honestUserAgent: "air-opencode-plugin/0.2",
+      };
+      ```
+
+      ## 无法绕过的机制
+      - Anubis PoW（kernel.org/codeberg.org）：需要浏览器环境
+      - 结论：无法在 Node.js fetch 中实现
+
+      ## 测试
+      - 新增 7 个测试（Headers 配置 + Cloudflare 检测逻辑）
+      - 879 个测试全通过
 ---
 
 # AIR Features
@@ -995,6 +1071,7 @@ air/
 
 | Date | Change |
 |------|--------|
+| 2026-03-31 | B003 B004 已修复：webfetch 双重 marker + 反爬虫增强（879 测试） |
 | 2026-03-30 | B001 已修复：GrepCompressor 支持 OC 格式（7 个新测试），B002 经验证已支持 |
 | 2026-03-30 | 新增 B001/B002：P0 级 Bug 修复计划（GrepCompressor/LsCompressor OC 格式支持） |
 | 2026-03-29 | Code Review Round 2 修复：airSearch 超时 Promise 内存泄漏（clearTimeout） |

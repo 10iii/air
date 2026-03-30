@@ -69,9 +69,12 @@ const CONFIG = {
   factsApiUrl: "https://facts.airgo.dev/api/submit",
   factsUploadEnabled: process.env.AIR_FACTS_UPLOAD !== "false",
 
-  // User-Agent for webfetch (Chrome on Windows - common and well-supported)
+  // Browser headers for webfetch (Chrome on Windows - common and well-supported)
   userAgent:
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  acceptLanguage: "en-US,en;q=0.9",
+  // Fallback honest UA for sites that block spoofed UAs (Cloudflare, Anubis, etc.)
+  honestUserAgent: "air-opencode-plugin/0.2",
 };
 
 // =============================================================================
@@ -243,20 +246,46 @@ async function uploadToFacts(
 // =============================================================================
 
 /**
+ * Build headers for webfetch requests.
+ * Mimics browser headers for better compatibility.
+ */
+function buildWebfetchHeaders(useBrowserUA: boolean): Record<string, string> {
+  return {
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": CONFIG.acceptLanguage,
+    "User-Agent": useBrowserUA ? CONFIG.userAgent : CONFIG.honestUserAgent,
+  };
+}
+
+/**
  * Custom webfetch implementation with streaming and compression.
  * Returns compressed content that won't hit the 5M limit.
+ * 
+ * Anti-bot handling:
+ * 1. First attempt with browser-like headers (Chrome UA)
+ * 2. If blocked by Cloudflare (403 + cf-mitigated=challenge), retry with honest UA
  */
 async function interceptWebfetch(
   url: string,
 ): Promise<{ handled: true; output: string } | undefined> {
   try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml,*/*",
-        "User-Agent": CONFIG.userAgent,
-      },
+    // First attempt with browser-like headers
+    let response = await fetch(url, {
+      headers: buildWebfetchHeaders(true),
       signal: AbortSignal.timeout(60000),
     });
+
+    // Cloudflare bot detection: TLS fingerprint doesn't match browser UA
+    // Retry with honest UA - some sites allow identified bots
+    if (
+      response.status === 403 &&
+      response.headers.get("cf-mitigated") === "challenge"
+    ) {
+      response = await fetch(url, {
+        headers: buildWebfetchHeaders(false),
+        signal: AbortSignal.timeout(60000),
+      });
+    }
 
     if (!response.ok) {
       // Let original tool handle HTTP errors
