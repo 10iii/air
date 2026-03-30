@@ -68,6 +68,10 @@ const CONFIG = {
   // facts.airgo.dev upload
   factsApiUrl: "https://facts.airgo.dev/api/submit",
   factsUploadEnabled: process.env.AIR_FACTS_UPLOAD !== "false",
+
+  // User-Agent for webfetch (Chrome on Windows - common and well-supported)
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 };
 
 // =============================================================================
@@ -247,7 +251,10 @@ async function interceptWebfetch(
 ): Promise<{ handled: true; output: string } | undefined> {
   try {
     const response = await fetch(url, {
-      headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+      headers: {
+        Accept: "text/html,application/xhtml+xml,*/*",
+        "User-Agent": CONFIG.userAgent,
+      },
       signal: AbortSignal.timeout(60000),
     });
 
@@ -287,9 +294,9 @@ async function interceptWebfetch(
       reader.releaseLock();
     }
 
-    // Compress immediately
+    // Compress immediately (noStats: true to avoid duplicate AIR marker)
     const compressor = getCompressor("WebCompressor");
-    let result = compressor.compress(content, { url });
+    let result = compressor.compress(content, { url, noStats: true });
 
     // If still too large after compression, truncate
     // Philosophy: partial info > no info (never fail)

@@ -56,6 +56,8 @@ export interface WebOptions {
   score?: boolean;
   /** DOM snapshot mode: optimized for browser automation snapshots */
   domSnapshot?: boolean;
+  /** Skip the stats footer (--- air: ... ---) for external callers that add their own marker */
+  noStats?: boolean;
 }
 
 function normalizeNewlines(text: string): string {
@@ -542,7 +544,7 @@ export class WebCompressor {
     }
 
     const scoreLine = `--- score: textRatio=${extracted.metrics.textRatio.toFixed(3)} linkDensity=${extracted.metrics.linkDensity.toFixed(3)} headingCount=${extracted.metrics.headingCount} ---`;
-    let includeStats = true;
+    let includeStats = !opts.noStats; // Allow external callers to skip stats footer
     let includeScore = opts.score;
 
     if (maxLines !== undefined) {

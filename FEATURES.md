@@ -878,6 +878,72 @@ features:
       
       ## 结论
       标记为 already-supported，无需代码修改。
+
+  - id: B003
+    title: OC webfetch 双重 AIR marker + User-Agent 反爬虫
+    summary: |
+      修复 webfetch 拦截时的两个问题：
+      1. WebCompressor 自带 "--- air:..." footer + 插件添加 "[AIR:...]" marker 导致双重标记
+      2. fetch 请求使用 Node.js 默认 User-Agent，被部分网站反爬虫拦截
+    impl: [oc-plugin/src/index.ts#interceptWebfetch, core/src/compressors/web.ts#WebOptions]
+    tests: [core/src/__tests__/web.test.ts, oc-plugin/src/__tests__/index.test.ts]
+    depends: [F005, F300]
+    designed_at: 2026-03-31T07:00:00Z
+    implemented_at: 2026-03-31T07:30:00Z
+    tested_at: 2026-03-31T07:30:00Z
+    severity: P2
+    resolution: fixed
+    design_notes: |
+      ## 问题描述
+      
+      用户报告 webfetch 输出有双重 AIR marker：
+      ```
+      ... content ...
+      --- air: 5000 chars → 2000 chars (60% saved) ---    ← WebCompressor footer
+      [AIR: compressed 60% | air_off() for raw]            ← 插件 marker
+      ```
+      
+      同时，部分网站因 User-Agent 检测拒绝请求。
+      
+      ## 修复方案
+      
+      ### 1. 添加 noStats 选项（WebCompressor）
+      ```typescript
+      // core/src/compressors/web.ts
+      export interface WebOptions {
+        // ... existing options
+        /** Skip the stats footer (--- air: ... ---) for external callers */
+        noStats?: boolean;
+      }
+      ```
+      
+      使用：`let includeStats = !opts.noStats;`
+      
+      ### 2. 插件传递 noStats: true
+      ```typescript
+      // oc-plugin/src/index.ts
+      let result = compressor.compress(content, { url, noStats: true });
+      ```
+      
+      ### 3. 添加 Chrome User-Agent
+      ```typescript
+      const CONFIG = {
+        // ... existing config
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      };
+      
+      const response = await fetch(url, {
+        headers: {
+          Accept: "text/html,application/xhtml+xml,*/*",
+          "User-Agent": CONFIG.userAgent,
+        },
+        // ...
+      });
+      ```
+      
+      ## 测试
+      - 新增 `noStats` 选项单元测试
+      - 872 个测试全通过
 ---
 
 # AIR Features

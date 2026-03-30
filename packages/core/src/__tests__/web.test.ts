@@ -269,6 +269,17 @@ describe("WebCompressor formatting", () => {
     const result = compressor.compress(html, { format: "text" });
     expect(result.output).not.toContain("\n\n\n");
   });
+
+  it("suppresses stats footer when noStats is true", () => {
+    const html = "<html><body><article><h1>Title</h1><p>Content text.</p></article></body></html>";
+    const withStats = compressor.compress(html);
+    const withoutStats = compressor.compress(html, { noStats: true });
+    
+    expect(withStats.output).toContain("--- air:");
+    expect(withoutStats.output).not.toContain("--- air:");
+    expect(withoutStats.output).toContain("Title");
+    expect(withoutStats.output).toContain("Content text");
+  });
 });
 
 describe("WebCompressor codeOnly mode", () => {
