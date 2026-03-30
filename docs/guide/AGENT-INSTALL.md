@@ -45,14 +45,24 @@ npm install -g @10iii/air-oc-plugin
 
 #### Step 3a: 配置全局 opencode.json
 
-在**全局配置文件** `~/.opencode.json` 中添加插件引用：
+OpenCode 全局配置文件位置（按优先级）：
+
+| 系统 | 主路径 | 备选路径（XDG 标准） |
+|---|---|---|
+| **macOS/Linux** | `~/.opencode.json` | `~/.config/opencode/opencode.json` |
+| **Windows** | `%USERPROFILE%\.opencode.json` | `%LOCALAPPDATA%\opencode\opencode.json` |
+
+找到或创建全局配置文件，添加插件引用：
 
 ```bash
-# 检查全局配置是否存在
+# macOS/Linux: 检查并创建
 cat ~/.opencode.json 2>/dev/null || echo '{}' > ~/.opencode.json
+
+# Windows (PowerShell): 检查并创建
+if (!(Test-Path "$env:USERPROFILE\.opencode.json")) { '{}' | Out-File "$env:USERPROFILE\.opencode.json" }
 ```
 
-编辑 `~/.opencode.json`，添加插件：
+编辑全局配置文件，添加插件：
 
 ```json
 {
