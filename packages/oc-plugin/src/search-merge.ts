@@ -273,13 +273,9 @@ export async function mergeSearchResults(
     const output = formatMergedOutput(merged, exaResults.length, airResult);
 
     return output;
-  } catch (error) {
-    // AIR search failed - log for debugging, return null to use original
-    console.debug(
-      "AIR search merge failed:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-    // Return formatted Exa results if we have any (fallback)
+  } catch {
+    // AIR search failed - silently fallback to original results
+    // (network issues, timeout, etc. are expected in production)
     if (exaResults.length > 0) {
       return formatFallbackOutput(exaResults);
     }

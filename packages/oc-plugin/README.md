@@ -7,12 +7,13 @@ OpenCode plugin for AIR (AI-optimized Information Representation) - transparent 
 ## Installation
 
 ```bash
-# Recommended: Auto-setup
-npx @10iii/air init
-
-# Or manual install
-npm install @10iii/air-oc-plugin
+# Global install (recommended)
+npm install -g @10iii/air-oc-plugin
 ```
+
+**Important**: Requires version ≥0.2.11 for compression hooks to work correctly.
+
+**Note**: `npx @10iii/air init` is for CLI usage guide injection, not for installing this plugin. To use the OC plugin, you must install it explicitly and configure opencode.json.
 
 ## Configuration
 

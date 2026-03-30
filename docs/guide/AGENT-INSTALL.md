@@ -26,17 +26,24 @@ fi
 
 ## OpenCode 安装
 
-### Step 2a: 安装插件（全局）
+AIR 提供两种使用方式，可以单独或同时使用：
+
+| 方式 | 包名 | 作用 | 安装命令 |
+|---|---|---|---|
+| **OC 插件** | `@10iii/air-oc-plugin` | 自动透明压缩工具输出 | `npm install -g @10iii/air-oc-plugin` |
+| **CLI 工具** | `@10iii/air` | 手动调用压缩命令 | `npm install -g @10iii/air` |
+
+### 方式 1：OC 插件（推荐，自动透明）
+
+安装后，所有工具输出自动压缩，无需修改任何代码。
+
+#### Step 2a: 安装插件
 
 ```bash
-# 推荐：使用 init 命令（自动完成全部配置）
-npx @10iii/air init
-
-# 或手动全局安装
 npm install -g @10iii/air-oc-plugin
 ```
 
-### Step 3a: 配置全局 opencode.json
+#### Step 3a: 配置全局 opencode.json
 
 在**全局配置文件** `~/.opencode.json` 中添加插件引用：
 
@@ -55,9 +62,7 @@ cat ~/.opencode.json 2>/dev/null || echo '{}' > ~/.opencode.json
 
 如果已有其他配置，只需添加 `plugin` 数组或追加到现有数组中。
 
-**注意**：`npx @10iii/air init` 会自动完成这一步。
-
-### Step 4a: 验证安装
+#### Step 4a: 验证安装
 
 重启 OpenCode 后，运行任意命令测试：
 
@@ -66,6 +71,48 @@ ls -la
 ```
 
 如果看到输出末尾有 `[AIR: compressed XX% | air_off() for raw]` 标记，说明安装成功。
+
+### 方式 2：CLI 工具（手动调用）
+
+Agent 可以主动调用 `air` 命令压缩输出。
+
+#### Step 2b-cli: 安装 CLI
+
+```bash
+npm install -g @10iii/air
+```
+
+#### Step 3b-cli: 注入使用指南（可选）
+
+```bash
+npx @10iii/air init
+```
+
+这会向 AGENTS.md / CLAUDE.md 等配置文件注入 AIR CLI 使用指南，让 agent 知道可以用 `air bash`、`air web` 等命令。
+
+**注意**：`air init` 只注入文档，不安装 OC 插件。
+
+### 备选：通过本地入口文件安装 OC 插件
+
+如果直接在 plugin 数组中引用包名不生效（某些 OpenCode 版本的兼容性问题），可以使用本地入口文件方式：
+
+**Step 1**: 创建入口文件 `.opencode/plugins/air.ts`
+
+```typescript
+// AIR 插件入口 - 导入并重新导出 @10iii/air-oc-plugin
+import AirPlugin from '@10iii/air-oc-plugin';
+export default AirPlugin;
+```
+
+**Step 2**: 在 `opencode.json` 中引用本地文件
+
+```json
+{
+  "plugin": ["file:///path/to/project/.opencode/plugins/air.ts"]
+}
+```
+
+这种方式通过本地 TypeScript 文件转发，确保插件被正确加载。
 
 ---
 
@@ -212,6 +259,41 @@ cat ~/.openclaw.json | grep -A2 '"plugins"'
 
 - 输出可能太小（< 200 字符增益不触发压缩）
 - 某些工具不在压缩白名单内
+- **重要**：确保安装了最新版本（≥0.2.11），旧版本存在 hook 签名兼容性问题
+
+### OpenCode：tools 可用但压缩不生效
+
+如果 `air_on()`/`air_off()` 工具可以调用，但工具输出没有 `[AIR: compressed]` 标记：
+
+1. **检查版本**：确保 `@10iii/air-oc-plugin >= 0.2.11`
+   ```bash
+   npm ls @10iii/air-oc-plugin
+   ```
+2. **升级插件**：
+   ```bash
+   npm install -g @10iii/air-oc-plugin@latest
+   ```
+3. **重启框架**：hook 注册需要重启才能生效
+
+> **背景**：v0.2.10 及更早版本存在 hook 参数签名错误（使用单参数 `event` 而非 OC 要求的双参数 `input, output`），导致 hook 虽然注册但内部逻辑无法正确执行。v0.2.11 已修复此问题。
+
+### 项目本地安装 vs 全局安装
+
+推荐使用**全局安装**（`npm install -g`），这样所有项目都能自动启用压缩。
+
+如果需要**项目本地安装**（仅当前项目使用）：
+
+```bash
+# 在项目目录下
+npm install @10iii/air-oc-plugin
+
+# 在项目的 opencode.json 中配置
+{
+  "plugin": ["@10iii/air-oc-plugin"]
+}
+```
+
+**注意**：本地安装的插件只对当前项目生效。
 
 ---
 

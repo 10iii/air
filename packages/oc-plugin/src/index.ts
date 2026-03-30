@@ -265,22 +265,27 @@ async function interceptWebfetch(
 
     const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      content += decoder.decode(value, { stream: true });
+        content += decoder.decode(value, { stream: true });
 
-      if (content.length > CONFIG.maxRawSize) {
-        content =
-          content.slice(0, CONFIG.maxRawSize) +
-          "\n[TRUNCATED: page exceeded 20MB, showing first 20MB]";
-        break;
+        if (content.length > CONFIG.maxRawSize) {
+          content =
+            content.slice(0, CONFIG.maxRawSize) +
+            "\n[TRUNCATED: page exceeded 20MB, showing first 20MB]";
+          break;
+        }
       }
-    }
 
-    // Flush remaining bytes from decoder
-    content += decoder.decode();
+      // Flush remaining bytes from decoder
+      content += decoder.decode();
+    } finally {
+      // Ensure reader is released even on error
+      reader.releaseLock();
+    }
 
     // Compress immediately
     const compressor = getCompressor("WebCompressor");
@@ -380,11 +385,10 @@ const AirPlugin: Plugin = async () => {
       }),
     },
 
-    hooks: {
-      // =========================================================================
-      // Before-hook: Intercept webfetch to avoid 5M limit
-      // =========================================================================
-      "tool.execute.before": async (
+    // =========================================================================
+    // Before-hook: Intercept webfetch to avoid 5M limit
+    // =========================================================================
+    "tool.execute.before": async (
         input: ToolExecuteBeforeInput,
         output: ToolExecuteBeforeOutput,
       ) => {
@@ -397,9 +401,16 @@ const AirPlugin: Plugin = async () => {
         // Check if disabled
         if (!airEnabled) return;
 
-        // Validate url parameter type
+        // Validate url parameter type and format
         const url = args.url;
         if (!url || typeof url !== "string") return;
+        
+        // Validate URL format to prevent malformed requests
+        try {
+          new URL(url);
+        } catch {
+          return; // Invalid URL, let original tool handle it
+        }
 
         // Intercept webfetch and return custom result
         const result = await interceptWebfetch(url);
@@ -527,7 +538,6 @@ const AirPlugin: Plugin = async () => {
         // Apply compression with marker at end
         output.output = `${result.compressed}\n[AIR: compressed ${result.ratio}% | air_off() for raw]`;
       },
-    },
   };
 };
 

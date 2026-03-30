@@ -1,6 +1,6 @@
 {
   "name": "@10iii/air-oc-plugin",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "description": "OpenCode plugin for AIR - AI-optimized tool output compression",
   "type": "module",
   "license": "MIT",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@10iii/air-core": "workspace:*",
-    "@opencode-ai/plugin": "^1.2.26"
+    "@opencode-ai/plugin": "^1.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
