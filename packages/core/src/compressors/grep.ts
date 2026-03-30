@@ -108,6 +108,87 @@ function parseGrepLine(line: string): ParsedMatch | null {
   return null;
 }
 
+/**
+ * Detect if the output is in OpenCode grep format.
+ * OC format starts with "Found N matches" header and uses different line structure.
+ */
+function detectOCGrepFormat(content: string): boolean {
+  // OC grep format starts with "Found N matches" or similar
+  const firstLine = content.split('\n')[0] ?? '';
+  return /^Found \d+ match(es)?( in \d+ files?)?$/i.test(firstLine.trim());
+}
+
+/**
+ * Parse OpenCode grep output format.
+ * Format:
+ *   Found N matches
+ *   /path/to/file:
+ *     Line 42: content here
+ *     Line 43: more content
+ */
+function parseOCGrepOutput(content: string): ParsedMatch[] {
+  const lines = content.split('\n');
+  const matches: ParsedMatch[] = [];
+  let currentFile = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Skip header lines like "Found N matches" or "Found N matches in M files"
+    if (/^Found \d+ match(es)?( in \d+ files?)?$/i.test(trimmed)) {
+      continue;
+    }
+    
+    // Skip empty lines
+    if (trimmed === '') {
+      continue;
+    }
+
+    // File path line: "/path/to/file:" (not indented, ends with colon)
+    // Must not start with whitespace and must end with ':'
+    if (!line.startsWith(' ') && !line.startsWith('\t') && trimmed.endsWith(':')) {
+      // Could be a file path or could be a match line, check if it looks like a path
+      const potentialPath = trimmed.slice(0, -1);
+      // File paths typically don't have "Line " prefix
+      if (!potentialPath.match(/^Line \d+$/)) {
+        currentFile = potentialPath;
+        continue;
+      }
+    }
+
+    // Match line with "Line N:" prefix (OC format)
+    // Formats: "  Line 42: content" or "  Line 42:content" or "  Line 42:"
+    const ocMatch = line.match(/^\s+Line (\d+):\s*(.*)$/);
+    if (ocMatch && currentFile) {
+      const lineNo = Number.parseInt(ocMatch[1], 10);
+      if (Number.isFinite(lineNo) && lineNo > 0) {
+        matches.push({
+          filePath: currentFile,
+          line: lineNo,
+          content: ocMatch[2] ?? '',
+        });
+        continue;
+      }
+    }
+    
+    // Also support OC format without "Line " prefix: "  42: content"
+    const ocMatchAlt = line.match(/^\s+(\d+):\s*(.*)$/);
+    if (ocMatchAlt && currentFile) {
+      const lineNo = Number.parseInt(ocMatchAlt[1], 10);
+      if (Number.isFinite(lineNo) && lineNo > 0) {
+        matches.push({
+          filePath: currentFile,
+          line: lineNo,
+          content: ocMatchAlt[2] ?? '',
+        });
+        continue;
+      }
+    }
+  }
+
+  return matches;
+}
+
 function findCommonPathPrefix(paths: string[]): string {
   if (paths.length < 2) return "";
 
@@ -294,11 +375,21 @@ export class GrepCompressor {
     const originalLineCount = sourceLines.length;
     const originalCharCount = content.length;
 
-    const parsedMatches: ParsedMatch[] = [];
-    for (const line of sourceLines) {
-      const parsed = parseGrepLine(line);
-      if (parsed) {
-        parsedMatches.push(parsed);
+    // Detect format and parse accordingly
+    const isOCFormat = detectOCGrepFormat(normalized);
+    let parsedMatches: ParsedMatch[];
+    
+    if (isOCFormat) {
+      // Use OC-specific parser
+      parsedMatches = parseOCGrepOutput(normalized);
+    } else {
+      // Use standard grep parser
+      parsedMatches = [];
+      for (const line of sourceLines) {
+        const parsed = parseGrepLine(line);
+        if (parsed) {
+          parsedMatches.push(parsed);
+        }
       }
     }
 

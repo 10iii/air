@@ -496,4 +496,99 @@ describe("GrepCompressor", () => {
       expect(result.output).toContain("  :2 beta");
     });
   });
+
+  describe("OpenCode format", () => {
+    it("parses OC grep format with 'Found N matches' header", () => {
+      const input = buildInput([
+        "Found 3 matches",
+        "/home/user/project/src/index.ts:",
+        "  Line 10: function hello() {",
+        "  Line 11:   return 'world';",
+        "  Line 12: }",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("3 matches in 1 file");
+      expect(result.output).toContain("src/index.ts (3 matches):");
+      // Note: consecutive lines are merged into a block with 4-space indent
+      expect(result.output).toContain(":10 function hello() {");
+      expect(result.output).toContain(":11 return 'world';");
+      expect(result.output).toContain(":12 }");
+    });
+
+    it("parses OC grep format with multiple files", () => {
+      const input = buildInput([
+        "Found 4 matches",
+        "/home/user/project/src/a.ts:",
+        "  Line 5: const a = 1;",
+        "  Line 10: const b = 2;",
+        "/home/user/project/src/b.ts:",
+        "  Line 20: export const c = 3;",
+        "  Line 30: export const d = 4;",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("4 matches in 2 files");
+      expect(result.output).toContain("a.ts (2 matches):");
+      expect(result.output).toContain("b.ts (2 matches):");
+    });
+
+    it("handles OC format with 'Found N matches in M files' header", () => {
+      const input = buildInput([
+        "Found 2 matches in 2 files",
+        "/project/foo.ts:",
+        "  Line 1: alpha",
+        "/project/bar.ts:",
+        "  Line 2: beta",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("2 matches in 2 files");
+      expect(result.output).toContain("foo.ts (1 match):");
+      expect(result.output).toContain("bar.ts (1 match):");
+    });
+
+    it("handles OC format with 'Found 0 matches'", () => {
+      const input = buildInput(["Found 0 matches"]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("0 matches in 0 files");
+    });
+
+    it("handles OC format with 'Found 1 match' (singular)", () => {
+      const input = buildInput([
+        "Found 1 match",
+        "/src/test.ts:",
+        "  Line 42: const answer = 42;",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("1 match in 1 file");
+      expect(result.output).toContain("test.ts (1 match):");
+      expect(result.output).toContain("  :42 const answer = 42;");
+    });
+
+    it("handles OC format with empty lines between files", () => {
+      const input = buildInput([
+        "Found 2 matches",
+        "",
+        "/src/a.ts:",
+        "  Line 1: first",
+        "",
+        "/src/b.ts:",
+        "  Line 2: second",
+        "",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("2 matches in 2 files");
+    });
+
+    it("handles OC format without 'Line ' prefix (just line number)", () => {
+      const input = buildInput([
+        "Found 2 matches",
+        "/src/test.ts:",
+        "  42: const x = 1;",
+        "  43: const y = 2;",
+      ]);
+      const result = compressor.compress(input);
+      expect(result.output).toContain("2 matches in 1 file");
+      expect(result.output).toContain("  :42 const x = 1;");
+      expect(result.output).toContain("  :43 const y = 2;");
+    });
+  });
 });

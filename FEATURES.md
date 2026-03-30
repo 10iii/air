@@ -725,6 +725,159 @@ features:
       ## 商业模型
       - 免费层：10 req/min，基础结果
       - 付费层：100+ req/min，优先队列
+
+  # ============================================
+  # Bug Fixes (B-series)
+  # ============================================
+
+  - id: B001
+    title: GrepCompressor OC 格式支持
+    summary: |
+      修复 GrepCompressor 无法解析 OpenCode grep 输出格式，
+      导致所有匹配结果被丢弃的 P0 级 Bug。
+    impl: [core/src/compressors/grep.ts#GrepCompressor]
+    tests: [core/src/__tests__/grep.test.ts]
+    depends: [F003]
+    designed_at: 2026-03-30T00:00:00Z
+    implemented_at: 2026-03-30T22:45:00Z
+    tested_at: 2026-03-30T22:45:00Z
+    severity: P0
+    design_notes: |
+      ## 问题描述
+      OC grep 工具输出格式与标准 grep 不同，GrepCompressor 无法解析：
+
+      ### 标准 grep 格式（当前支持）
+      ```
+      /path/to/file.ts:42:  function foo() {
+      /path/to/file.ts:43:    return bar;
+      /path/to/file.ts:44:  }
+      ```
+
+      ### OpenCode grep 格式（需支持）
+      ```
+      Found 3 matches
+      /path/to/file.ts:
+        Line 42:   function foo() {
+        Line 43:     return bar;
+        Line 44:   }
+      ```
+
+      ## 根因分析
+      - `parseGrepLine()` 函数期望 `/path:lineNum:content` 格式
+      - OC 输出使用 `Found N matches` 头部 + 路径行 + `Line N: content` 格式
+      - 解析失败导致所有匹配被丢弃，输出变成 "0 matches"
+
+      ## 修复方案
+
+      ### 1. 检测输出格式
+      ```typescript
+      function detectGrepFormat(output: string): 'standard' | 'opencode' {
+        if (output.startsWith('Found ') && output.includes(' matches')) {
+          return 'opencode';
+        }
+        return 'standard';
+      }
+      ```
+
+      ### 2. OC 格式解析器
+      ```typescript
+      function parseOCGrepOutput(output: string): GrepMatch[] {
+        const lines = output.split('\n');
+        const matches: GrepMatch[] = [];
+        let currentFile = '';
+
+        for (const line of lines) {
+          // 跳过 "Found N matches" 头部
+          if (line.startsWith('Found ') && line.includes(' matches')) continue;
+
+          // 文件路径行: "/path/to/file.ts:"
+          if (line.endsWith(':') && !line.startsWith(' ')) {
+            currentFile = line.slice(0, -1);
+            continue;
+          }
+
+          // 匹配行: "  Line 42:   content"
+          const match = line.match(/^\s+Line (\d+):\s*(.*)$/);
+          if (match && currentFile) {
+            matches.push({
+              file: currentFile,
+              line: parseInt(match[1], 10),
+              content: match[2]
+            });
+          }
+        }
+
+        return matches;
+      }
+      ```
+
+      ### 3. 整合到 GrepCompressor
+      在 `compress()` 方法开始处检测格式，选择对应解析器。
+
+      ## 测试计划
+      - 添加 OC 格式测试用例（3+ cases）
+      - 验证混合格式不会相互干扰
+      - 验证 "Found 0 matches" 正确处理
+
+  - id: B002
+    title: LsCompressor/GlobCompressor 纯路径列表支持
+    summary: |
+      经验证 LsCompressor 已支持 path-list 格式，无需修复。
+      OC 插件已正确将 glob 工具路由到 LsCompressor。
+    impl: [core/src/compressors/ls.ts#LsCompressor]
+    tests: [core/src/__tests__/ls.test.ts]
+    depends: [F006]
+    designed_at: 2026-03-30T00:00:00Z
+    implemented_at: 2026-03-30T22:50:00Z
+    tested_at: 2026-03-30T22:50:00Z
+    severity: P0
+    resolution: already-supported
+    design_notes: |
+      ## 验证结果（2026-03-30）
+      
+      经手动测试验证，LsCompressor 已经支持 path-list 格式：
+      
+      **输入**（OC glob 输出格式）：
+      ```
+      src/index.ts
+      src/utils.ts
+      src/types.ts
+      package.json
+      tsconfig.json
+      ```
+      
+      **输出**（正确压缩为 tree 格式）：
+      ```
+      project/ (5 files, 1 dirs)
+      ├── src/
+      │   ├── index.ts
+      │   ├── types.ts
+      │   └── utils.ts
+      ├── package.json
+      └── tsconfig.json
+      
+      Types: .ts(3), .json(2)
+      ```
+      
+      **元数据**：
+      - detectedFormat: "path-list" ✅
+      - totalFiles: 5 ✅
+      - totalDirs: 1 ✅
+      
+      ## OC 插件路由
+      `TOOL_COMPRESSOR_MAP` 已正确配置：
+      ```typescript
+      glob: () => getCompressor("LsCompressor"),
+      ```
+      
+      ## 原报告问题可能原因
+      测试报告中的问题可能是其他因素导致：
+      1. 测试时使用的是旧版本
+      2. OC glob 输出格式可能有变化
+      3. 需要更多真实 OC 环境测试数据
+      
+      ## 结论
+      标记为 already-supported，无需代码修改。
 ---
 
 # AIR Features
@@ -770,11 +923,14 @@ air/
 | F300 | oc-plugin |
 | F400-F404 | openclaw-plugin |
 | F500+ | planned features |
+| B001+ | bug fixes |
 
 ## Change Log
 
 | Date | Change |
 |------|--------|
+| 2026-03-30 | B001 已修复：GrepCompressor 支持 OC 格式（7 个新测试），B002 经验证已支持 |
+| 2026-03-30 | 新增 B001/B002：P0 级 Bug 修复计划（GrepCompressor/LsCompressor OC 格式支持） |
 | 2026-03-29 | Code Review Round 2 修复：airSearch 超时 Promise 内存泄漏（clearTimeout） |
 | 2026-03-29 | Code Review Round 2 修复：OC 插件 search-merge 添加 fallback 输出 |
 | 2026-03-29 | Code Review 修复：所有 catch 块添加 console.debug 错误日志 |
@@ -797,3 +953,5 @@ air/
 - F500-F501 为计划中的功能
 - F510-F513 **双源搜索合并**：designed 状态，等待实现
 - F514 + F520 **Facts 知识库**：designed 状态，构建 Agent 专用搜索生态
+- **B001** P0 级 Bug 修复：✅ 已修复（GrepCompressor OC 格式支持）
+- **B002** P0 级 Bug：✅ 经验证已支持（LsCompressor path-list 格式）
