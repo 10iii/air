@@ -290,6 +290,7 @@ function parsePathListing(lines: string[]): ParsedListing {
     if (TREE_SUMMARY_RE.test(trimmed)) continue;
     if (/^total\s+\d+/i.test(trimmed)) continue;
     if (matchLongLsLine(trimmed)) continue;
+    if (/^Found \d+ file\(s\)$/i.test(trimmed)) continue;
 
     const sectionMatch = /^(.*):$/.exec(trimmed);
     if (sectionMatch && !trimmed.includes(" ")) {
@@ -410,13 +411,13 @@ function finalizeNodeKinds(node: TreeNode): void {
   }
 }
 
-function pruneNoise(node: TreeNode): void {
+function pruneNoise(node: TreeNode, depth: number = 0): void {
   for (const [childName, child] of [...node.children.entries()]) {
-    if (isNoiseName(child.name)) {
+    if (depth === 0 && isNoiseName(child.name)) {
       node.children.delete(childName);
       continue;
     }
-    pruneNoise(child);
+    pruneNoise(child, depth + 1);
   }
 }
 

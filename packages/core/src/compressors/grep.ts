@@ -113,18 +113,21 @@ function parseGrepLine(line: string): ParsedMatch | null {
  * OC format starts with "Found N matches" header and uses different line structure.
  */
 function detectOCGrepFormat(content: string): boolean {
-  // OC grep format starts with "Found N matches" or similar
   const firstLine = content.split('\n')[0] ?? '';
-  return /^Found \d+ match(es)?( in \d+ files?)?$/i.test(firstLine.trim());
+  return /^Found \d+ match\(?e?s?\)?( in \d+ file\(?s?\)?)?$/i.test(firstLine.trim());
 }
 
 /**
  * Parse OpenCode grep output format.
- * Format:
- *   Found N matches
- *   /path/to/file:
- *     Line 42: content here
- *     Line 43: more content
+ * Format (OC grep tool output):
+ *   Found N match(es) in M file(s)
+ *
+ *   /path/to/file
+ *     1: content here
+ *     2: more content
+ *
+ * Note: File paths do NOT end with colon in OC format.
+ * Match lines are indented with "  N: content" format.
  */
 function parseOCGrepOutput(content: string): ParsedMatch[] {
   const lines = content.split('\n');
@@ -133,25 +136,34 @@ function parseOCGrepOutput(content: string): ParsedMatch[] {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    
-    // Skip header lines like "Found N matches" or "Found N matches in M files"
-    if (/^Found \d+ match(es)?( in \d+ files?)?$/i.test(trimmed)) {
+
+    if (/^Found \d+ match\(?e?s?\)?( in \d+ file\(?s?\)?)?$/i.test(trimmed)) {
       continue;
     }
-    
+
     // Skip empty lines
     if (trimmed === '') {
       continue;
     }
 
-    // File path line: "/path/to/file:" (not indented, ends with colon)
-    // Must not start with whitespace and must end with ':'
-    if (!line.startsWith(' ') && !line.startsWith('\t') && trimmed.endsWith(':')) {
-      // Could be a file path or could be a match line, check if it looks like a path
-      const potentialPath = trimmed.slice(0, -1);
-      // File paths typically don't have "Line " prefix
-      if (!potentialPath.match(/^Line \d+$/)) {
-        currentFile = potentialPath;
+    // File path line detection (OC format: no trailing colon, not indented)
+    // Must not start with whitespace
+    // Must look like a path (contains / or \ or looks like Windows drive letter)
+    if (!line.startsWith(' ') && !line.startsWith('\t')) {
+      // Check if it looks like a file path
+      const looksLikePath =
+        trimmed.includes('/') ||
+        trimmed.includes('\\') ||
+        /^[A-Za-z]:/.test(trimmed) || // Windows drive letter
+        trimmed.startsWith('./') ||
+        trimmed.startsWith('../');
+
+      // Not a match line (doesn't start with digit + colon)
+      const isMatchLine = /^\d+:/.test(trimmed);
+
+      if (looksLikePath && !isMatchLine) {
+        // Remove trailing colon if present (for backwards compat)
+        currentFile = trimmed.endsWith(':') ? trimmed.slice(0, -1) : trimmed;
         continue;
       }
     }
@@ -170,7 +182,7 @@ function parseOCGrepOutput(content: string): ParsedMatch[] {
         continue;
       }
     }
-    
+
     // Also support OC format without "Line " prefix: "  42: content"
     const ocMatchAlt = line.match(/^\s+(\d+):\s*(.*)$/);
     if (ocMatchAlt && currentFile) {
