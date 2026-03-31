@@ -1022,13 +1022,235 @@ features:
       - 879 个测试全通过
 ---
 
-# AIR Features
+# AIR Product Requirements Document
 
 > **DITA 方法论**：Design-Implementation-Test Alignment
 > 
-> AI-optimized Information Representation 项目特性追踪表
+> 本文档是 AIR 项目的**单一真相源**，与 Features YAML 保持同步。
 
-## Status Legend
+---
+
+## 1. Product Vision
+
+### 1.1 Problem Statement
+
+AI Agent 在执行工具调用时，工具输出往往包含大量冗余信息（进度条、ANSI 颜色码、重复路径等），浪费宝贵的上下文窗口空间，导致：
+- Token 消耗过高
+- 上下文被早期压缩，Agent 丢失关键信息
+- 长任务中断或质量下降
+
+### 1.2 Target Users
+
+- **AI Agent 框架开发者**：OpenCode、OpenClaw、Claude Code 等框架的维护者
+- **Agent 用户**：使用 AI Agent 完成编码、调研等任务的开发者
+- **CLI 用户**：需要清洁输出的命令行工具用户
+
+### 1.3 Core Value Proposition
+
+**AIR = AI-optimized Information Representation**
+
+1. **压缩**：移除冗余，保留语义，减少 30-70% token 消耗
+2. **零配置**：自动检测输出格式，智能选择压缩策略
+3. **即插即用**：提供 OC/OpenClaw 插件，一行配置启用
+4. **免费搜索**：聚合 DDG/Bing/Baidu/Sogou，不需要 API key
+
+---
+
+## 2. Architecture Overview
+
+```
+air/
+├── packages/
+│   ├── core/               # @10iii/air-core
+│   │   ├── compressors/    # 12 个压缩器
+│   │   ├── search/         # 多引擎搜索聚合
+│   │   ├── telemetry/      # 匿名遥测
+│   │   └── parsers/        # 语言检测/解析
+│   ├── cli/                # @10iii/air
+│   ├── oc-plugin/          # @10iii/air-oc-plugin
+│   └── openclaw-plugin/    # @10iii/air-openclaw-plugin
+├── archived/               # 归档代码
+│   ├── mcp-server/         # [ARCHIVED] MCP Server
+│   └── core-compressors/   # 低使用率压缩器
+└── air-facts-api/          # Cloudflare Workers API
+```
+
+### 2.1 Tech Stack
+
+- **Runtime**: Node.js 20+ / Bun
+- **Language**: TypeScript 5.x (strict mode)
+- **Testing**: Vitest
+- **Build**: tsup
+- **Monorepo**: pnpm workspaces
+
+---
+
+## 3. Modules
+
+### 3.1 Core Compressors
+
+核心压缩器集合，每个压缩器针对特定输出格式优化。
+
+→ **Features**: F001-F012
+
+**Key Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| 使用 Readability 算法 (F005) | Mozilla 维护的成熟方案，正文提取准确率高 |
+| skeleton 模式正则启发式 (F001) | 零依赖启动，tree-sitter 作为可选增强 |
+| 归档 edit/session/media (F008/F009/F012) | 使用率低，简化核心包体积 |
+
+---
+
+### 3.2 Search System
+
+多搜索引擎聚合，为 Agent 提供免费的网络搜索能力。
+
+→ **Features**: F020-F026
+
+**Key Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| 禁止任何需 API key 的引擎 | 工具的工具不该让用户额外付费 |
+| 中国/海外引擎分流 (F026) | DDG 在中国被墙，需要百度+搜狗替代 |
+| AirFacts 引擎 (F025) | 众包知识库，补充搜索结果 |
+
+---
+
+### 3.3 CLI Interface
+
+命令行工具，直接调用各压缩器和搜索功能。
+
+→ **Features**: F100-F114
+
+---
+
+### 3.4 OpenCode Plugin
+
+OpenCode 框架插件，通过 hook 系统自动压缩工具输出。
+
+→ **Features**: F300, F512, F514
+
+**Key Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| tool.execute.after hook | 工具输出后压缩，用户可用 air_off() 禁用 |
+| 双源搜索合并 (F512) | websearch 结果串行追加 AIR 免费引擎结果 |
+| Facts 上传 (F514) | 无论压缩是否生效都上传，构建知识库 |
+
+---
+
+### 3.5 OpenClaw Plugin
+
+OpenClaw 框架插件，功能与 OC 插件对等。
+
+→ **Features**: F400-F404, F513, F514
+
+---
+
+### 3.6 [ARCHIVED] MCP Server ⛔
+
+MCP (Model Context Protocol) 服务器，将压缩器暴露为 MCP tools。
+
+**Current Status**: 归档，不再维护
+
+→ **Features**: F200 (deprecated)
+
+**Decision History:**
+
+| Date | Decision | Impact | Reason |
+|------|----------|--------|--------|
+| 2026-03-16 | 设计并实现 | F200 created | MCP 是 Anthropic 推广的协议，预期会成为标准 |
+| 2026-03-28 | 归档 | F200 deprecated, F300/F400 created | 1) 配置复杂 2) 多层协议开销大 3) 原生插件更简洁 |
+
+---
+
+## 4. Non-Functional Requirements
+
+### 4.1 Performance
+
+- 压缩延迟 < 100ms（1MB 输入）
+- 搜索聚合超时 10s（可配置）
+
+### 4.2 Compatibility
+
+- Node.js 20+
+- Bun 1.0+
+- 支持 ESM 和 CJS
+
+### 4.3 Privacy
+
+- 默认开启匿名遥测，可 opt-out
+- Facts 上传可通过环境变量禁用
+
+---
+
+## 5. Planned Features
+
+→ **Features**: F042, F501, F510, F520
+
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| F042: Tree-sitter Integration | P2 | 可选增强 skeleton 精度 |
+| F501: P1 Direct Call | P3 | web/api/search 直接调用模式 |
+| F510: Dual-Source Search Merge | ✅ Done | F512/F513 已实现 |
+| F520: Facts Search API | P1 | 服务器端已运行 |
+
+---
+
+## 6. Change History
+
+> 按时间倒序记录重大变更。
+
+### 2026-03-31
+
+- **B003 B004**: webfetch 双重 marker + 反爬虫增强
+  - Decision: 增强反爬虫能力，但接受 Anubis PoW 无法绕过的限制
+  - Impact: OC 插件更新，879 测试通过
+  - Reason: 提高网页抓取成功率
+
+### 2026-03-30
+
+- **B001**: GrepCompressor 支持 OC 格式
+  - Decision: 添加 OC grep 输出格式解析器
+  - Impact: B001 fixed, 7 个新测试
+  - Reason: OC grep 输出格式与标准 grep 不同
+
+- **B002**: LsCompressor path-list 格式验证
+  - Decision: 无需修复，已支持
+  - Impact: B002 closed as already-supported
+  - Reason: 测试验证 LsCompressor 已能处理 OC glob 输出
+
+### 2026-03-29
+
+- **Code Review 修复**
+  - Decision: 修复多个代码质量问题
+  - Impact: airSearch 超时内存泄漏修复，错误日志增强
+  - Reason: 提高代码健壮性
+
+### 2026-03-28
+
+- **F200 归档**: MCP Server 停止维护
+  - Decision: 归档而非删除，保留代码供未来参考
+  - Impact: F200 deprecated, mcp-server 包停止发布
+  - Reason: OC/OpenClaw 原生插件更符合实际需求
+
+- **F510-F514**: 双源搜索合并 + Facts 上传
+  - Decision: 串行方案 + 初期即做 Facts
+  - Impact: 新增 F510-F514
+  - Reason: 简化实现，延迟增加可接受
+
+- **低使用率功能归档**
+  - Decision: 归档 edit/session/media 压缩器
+  - Impact: F008/F009/F012 deprecated
+  - Reason: 减少维护负担，保持核心精简
+
+---
+
+## 7. Status Legend
 
 | 状态 | 判断规则 |
 |------|----------|
@@ -1038,63 +1260,33 @@ features:
 | tested | tested_at 是最新的时间戳 |
 | deprecated | deprecated: true |
 
-## Package Overview
+---
 
-```
-air/
-├── packages/
-│   ├── core/           # @10iii/air-core (F001-F042)
-│   │   ├── compressors/  # 12 个压缩器
-│   │   ├── search/       # 搜索引擎聚合
-│   │   ├── telemetry/    # 遥测
-│   │   └── parsers/      # 解析器
-│   ├── cli/            # @10iii/air (F100-F114)
-│   ├── oc-plugin/      # @10iii/air-oc-plugin (F300)
-│   └── openclaw-plugin/# @10iii/air-openclaw-plugin (F400-F404)
-├── archived/           # 归档（不再维护）
-│   └── mcp-server/     # @10iii/air-mcp-server (F200) - deprecated
-```
+## 8. Feature ID Ranges
 
-## Feature ID Ranges
+| Range | Module | Notes |
+|-------|--------|-------|
+| F001-F012 | core/compressors | 压缩器（部分已归档） |
+| F020-F026 | core/search | 搜索引擎聚合 |
+| F030-F031 | core/telemetry | 遥测 |
+| F040-F042 | core/parsers | 解析器 |
+| F100-F114 | cli | 命令行命令（部分已归档） |
+| F200 | mcp-server | [ARCHIVED] |
+| F300 | oc-plugin | OpenCode 插件主入口 |
+| F400-F404 | openclaw-plugin | OpenClaw 插件 |
+| F510-F514 | 双源搜索 | 搜索合并 + Facts |
+| F520+ | facts-api | 知识库 API |
+| B001+ | bug fixes | Bug 修复 |
 
-| Range | Package |
-|-------|---------|
-| F001-F042 | core (compressors, search, telemetry, parsers) |
-| F100-F114 | cli (commands) |
-| F200 | mcp-server (archived) |
-| F300 | oc-plugin |
-| F400-F404 | openclaw-plugin |
-| F500+ | planned features |
-| B001+ | bug fixes |
+---
 
-## Change Log
+## 9. Notes
 
-| Date | Change |
-|------|--------|
-| 2026-03-31 | B003 B004 已修复：webfetch 双重 marker + 反爬虫增强（879 测试） |
-| 2026-03-30 | B001 已修复：GrepCompressor 支持 OC 格式（7 个新测试），B002 经验证已支持 |
-| 2026-03-30 | 新增 B001/B002：P0 级 Bug 修复计划（GrepCompressor/LsCompressor OC 格式支持） |
-| 2026-03-29 | Code Review Round 2 修复：airSearch 超时 Promise 内存泄漏（clearTimeout） |
-| 2026-03-29 | Code Review Round 2 修复：OC 插件 search-merge 添加 fallback 输出 |
-| 2026-03-29 | Code Review 修复：所有 catch 块添加 console.debug 错误日志 |
-| 2026-03-29 | Code Review 修复：OpenClaw uploadToFacts 添加 AbortController 超时控制 |
-| 2026-03-29 | Code Review 修复：OpenClaw 添加 getEventArgs() 类型安全函数 |
-| 2026-03-29 | F511-F514 全部完成：849 测试通过 |
-| 2026-03-28 | F511 实现完成：airSearch() 核心函数 + 7 个测试 |
-| 2026-03-28 | F514/F520 更新：用户决定初期就做，CLI 已全链路打通，服务器已在工作 |
-| 2026-03-28 | 新增 F514 (Facts Upload) + F520 (Facts Search API) 设计 |
-| 2026-03-28 | F510-F513 更新为串行方案（简化实现，~3h 工作量） |
-| 2026-03-28 | 设计 F510-F513 双源搜索合并功能 |
-| 2026-03-28 | 归档 edit/session/media 命令（F008/F009/F012/F108/F109/F112） |
-| 2026-03-28 | 归档 MCP Server，不再开发和发布 |
-| 2026-03-28 | 初始化 FEATURES.md，记录 50+ 功能点 |
+- 当前版本：0.2.16
+- 测试数量：879（全绿）
+- F042 (Tree-sitter) 设计中，等待需求驱动
+- Facts API 服务器已在 Cloudflare Workers 运行
 
-## Notes
+---
 
-- F042 (Tree-sitter Integration) 为 draft 状态，设计中
-- F200 (MCP Server) **已归档，不再维护**（代码在 archived/mcp-server/）
-- F500-F501 为计划中的功能
-- F510-F513 **双源搜索合并**：designed 状态，等待实现
-- F514 + F520 **Facts 知识库**：designed 状态，构建 Agent 专用搜索生态
-- **B001** P0 级 Bug 修复：✅ 已修复（GrepCompressor OC 格式支持）
-- **B002** P0 级 Bug：✅ 经验证已支持（LsCompressor path-list 格式）
+(End of file)
